@@ -1,0 +1,786 @@
+/**
+ * OpenAPI Specification Parser
+ * 
+ * Parses OpenAPI/Swagger specs and generates documentation chunks for:
+ * - API endpoints with full request/response documentation
+ * - Code samples in various languages
+ * - Smart example generation based on Dodo Payments domain
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { parse as parseYaml } from 'yaml';
+import { DocChunk } from '../../types/index.js';
+import { DOCS_BASE_URL } from '../core/index.js';
+
+// URL lookup map: "METHOD /path" -> documentation URL (built from MDX frontmatter)
+let docUrlMap: Map<string, string> = new Map();
+
+// =============================================================================
+// OPENAPI TYPES
+// =============================================================================
+
+interface OpenAPISpec {
+  openapi: string;
+  info: {
+    title: string;
+    version: string;
+  };
+  servers: Array<{
+    url: string;
+    description: string;
+  }>;
+  paths: Record<string, PathItem>;
+  components?: {
+    schemas?: Record<string, SchemaObject>;
+  };
+}
+
+interface PathItem {
+  get?: Operation;
+  post?: Operation;
+  put?: Operation;
+  patch?: Operation;
+  delete?: Operation;
+}
+
+interface Operation {
+  tags?: string[];
+  operationId?: string;
+  summary?: string;
+  description?: string;
+  parameters?: Parameter[];
+  requestBody?: {
+    content?: {
+      'application/json'?: {
+        schema?: SchemaRef;
+        example?: any;
+      };
+    };
+    required?: boolean;
+  };
+  responses?: Record<string, Response>;
+  'x-codeSamples'?: CodeSample[];
+}
+
+interface Parameter {
+  name: string;
+  in: 'query' | 'path' | 'header';
+  description?: string;
+  required?: boolean;
+  schema?: {
+    type?: string;
+    format?: string;
+    minimum?: number;
+    maximum?: number;
+    enum?: string[];
+    default?: any;
+    example?: any;
+  };
+}
+
+interface Response {
+  description?: string;
+  content?: {
+    'application/json'?: {
+      schema?: SchemaRef;
+      example?: any;
+    };
+  };
+}
+
+interface SchemaRef {
+  $ref?: string;
+  type?: string | string[];
+  properties?: Record<string, SchemaObject>;
+  required?: string[];
+  items?: SchemaRef;
+  enum?: string[];
+  nullable?: boolean;
+  example?: any;
+}
+
+interface SchemaObject {
+  type?: string | string[];
+  description?: string;
+  format?: string;
+  properties?: Record<string, SchemaObject>;
+  required?: string[];
+  items?: SchemaRef;
+  allOf?: SchemaRef[];
+  oneOf?: SchemaRef[];
+  anyOf?: SchemaRef[];
+  $ref?: string;
+  example?: any;
+  enum?: string[];
+  nullable?: boolean;
+  default?: any;
+  minimum?: number;
+  maximum?: number;
+}
+
+interface CodeSample {
+  lang: string;
+  source: string;
+}
+
+// =============================================================================
+// SCHEMA RESOLUTION
+// =============================================================================
+
+/**
+ * Resolve a schema reference to its definition (with cycle detection)
+ */
+function resolveSchema(
+  ref: string, 
+  schemas: Record<string, SchemaObject>, 
+  visited: Set<string> = new Set()
+): SchemaObject | null {
+  const schemaName = ref.replace('#/components/schemas/', '');
+  
+  if (visited.has(schemaName)) {
+    return null; // Cycle detected
+  }
+  
+  visited.add(schemaName);
+  const schema = schemas[schemaName];
+  
+  if (!schema) return null;
+  
+  if (schema.$ref) {
+    return resolveSchema(schema.$ref, schemas, visited);
+  }
+  
+  return schema;
+}
+
+function generateExample(
+  schema: SchemaObject | null, 
+  schemas: Record<string, SchemaObject>, 
+  depth: number = 0,
+  fieldName?: string
+): any {
+  if (depth > 3 || !schema) return null;
+  
+  // Handle $ref
+  if (schema.$ref) {
+    const resolved = resolveSchema(schema.$ref, schemas, new Set());
+    return generateExample(resolved, schemas, depth + 1, fieldName);
+  }
+  
+  // Use provided example
+  if (schema.example !== undefined) {
+    return schema.example;
+  }
+    
+  // Handle allOf
+  if (schema.allOf) {
+    const merged: any = {};
+    for (const s of schema.allOf) {
+      const ex = generateExample(s as SchemaObject, schemas, depth + 1, fieldName);
+      if (ex && typeof ex === 'object') {
+        Object.assign(merged, ex);
+      }
+    }
+    return Object.keys(merged).length > 0 ? merged : null;
+  }
+  
+  // Handle oneOf/anyOf - take first
+  if (schema.oneOf?.[0]) {
+    return generateExample(schema.oneOf[0] as SchemaObject, schemas, depth + 1, fieldName);
+  }
+  if (schema.anyOf?.[0]) {
+    return generateExample(schema.anyOf[0] as SchemaObject, schemas, depth + 1, fieldName);
+  }
+  
+  // Handle enum
+  if (schema.enum && schema.enum.length > 0) {
+    return schema.enum[0];
+  }
+  
+  const type = Array.isArray(schema.type) 
+    ? schema.type.find(t => t !== 'null') || 'string'
+    : schema.type;
+  
+  switch (type) {
+    case 'object':
+      if (schema.properties) {
+        const obj: Record<string, any> = {};
+        const requiredFields = new Set(schema.required || []);
+        let count = 0;
+        for (const [name, prop] of Object.entries(schema.properties)) {
+          if (requiredFields.has(name) || count < 5) {
+            const val = generateExample(prop, schemas, depth + 1, name);
+            if (val !== null) {
+              obj[name] = val;
+              count++;
+            }
+          }
+        }
+        return Object.keys(obj).length > 0 ? obj : {};
+      }
+      return {};
+      
+    case 'array':
+      if (schema.items) {
+        const itemEx = generateExample(schema.items as SchemaObject, schemas, depth + 1);
+        return itemEx !== null ? [itemEx] : [];
+      }
+      return [];
+      
+    case 'string':
+      if (schema.format === 'date-time') return '2024-01-15T10:30:00Z';
+      if (schema.format === 'date') return '2024-01-15';
+      if (schema.format === 'email') return 'user@example.com';
+      if (schema.format === 'uri') return 'https://example.com';
+      if (schema.format === 'uuid') return '550e8400-e29b-41d4-a716-446655440000';
+      return schema.default || 'string';
+      
+    case 'integer':
+      return schema.default ?? schema.minimum ?? 0;
+      
+    case 'number':
+      return schema.default ?? schema.minimum ?? 0.0;
+      
+    case 'boolean':
+      return schema.default ?? true;
+      
+    default:
+      return null;
+  }
+}
+
+// =============================================================================
+// SCHEMA FORMATTING
+// =============================================================================
+
+/**
+ * Format schema properties as documentation
+ */
+function formatSchemaProperties(
+  schema: SchemaObject | null,
+  schemas: Record<string, SchemaObject>,
+  indent: string = '',
+  depth: number = 0
+): string {
+  if (!schema || depth > 3) return '';
+  
+  // Handle $ref
+  if (schema.$ref) {
+    const resolved = resolveSchema(schema.$ref, schemas, new Set());
+    return formatSchemaProperties(resolved, schemas, indent, depth + 1);
+  }
+  
+  // Handle allOf
+  if (schema.allOf) {
+    const lines: string[] = [];
+    for (const s of schema.allOf) {
+      lines.push(formatSchemaProperties(s as SchemaObject, schemas, indent, depth + 1));
+    }
+    return lines.filter(Boolean).join('\n');
+  }
+  
+  if (!schema.properties) return '';
+  
+  const lines: string[] = [];
+  const required = new Set(schema.required || []);
+  
+  for (const [propName, propSchema] of Object.entries(schema.properties)) {
+    const isRequired = required.has(propName);
+    const nullable = propSchema.nullable || (Array.isArray(propSchema.type) && propSchema.type.includes('null'));
+    
+    // Build type string
+    let typeStr = buildTypeString(propSchema);
+    
+    // Add format
+    if (propSchema.format) {
+      typeStr += ` (${propSchema.format})`;
+    }
+    
+    // Add nullable marker
+    if (nullable) {
+      typeStr += ' | null';
+    }
+    
+    const reqStr = isRequired ? 'Required' : 'Optional';
+    let line = `${indent}- **${propName}** (${typeStr}) - ${reqStr}`;
+    
+    if (propSchema.description) {
+      line += ` - ${propSchema.description}`;
+    }
+    
+    if (propSchema.enum && propSchema.enum.length > 0) {
+      line += ` (Allowed: ${propSchema.enum.map(e => `\`${e}\``).join(', ')})`;
+    }
+    
+    // Add constraints
+    const constraints: string[] = [];
+    if (propSchema.minimum !== undefined) constraints.push(`min: ${propSchema.minimum}`);
+    if (propSchema.maximum !== undefined) constraints.push(`max: ${propSchema.maximum}`);
+    if (constraints.length > 0) {
+      line += ` [${constraints.join(', ')}]`;
+    }
+    
+    lines.push(line);
+    
+    // Add nested properties
+    if (propSchema.type === 'object' && propSchema.properties && depth < 2) {
+      lines.push(formatSchemaProperties(propSchema, schemas, indent + '  ', depth + 1));
+    }
+  }
+  
+  return lines.filter(Boolean).join('\n');
+}
+
+/**
+ * Build type string from schema
+ */
+function buildTypeString(propSchema: SchemaObject): string {
+  if (propSchema.$ref) {
+    return propSchema.$ref.replace('#/components/schemas/', '');
+  }
+  
+  if (propSchema.allOf) {
+    const types = propSchema.allOf.map(s => 
+      s.$ref ? s.$ref.replace('#/components/schemas/', '') : (s as SchemaObject).type
+    ).filter(Boolean).join(' & ');
+    return types || 'object';
+  }
+  
+  if (propSchema.oneOf || propSchema.anyOf) {
+    const variants = propSchema.oneOf || propSchema.anyOf || [];
+    return variants.map(s => 
+      s.$ref ? s.$ref.replace('#/components/schemas/', '') : (s as SchemaObject).type
+    ).filter(Boolean).join(' | ') || 'any';
+  }
+  
+  if (Array.isArray(propSchema.type)) {
+    return propSchema.type.filter(t => t !== 'null').join(' | ');
+  }
+  
+  if (propSchema.type === 'array' && propSchema.items) {
+    const itemType = (propSchema.items as SchemaObject).$ref 
+      ? (propSchema.items as SchemaObject).$ref!.replace('#/components/schemas/', '')
+      : (propSchema.items as SchemaObject).type || 'any';
+    return `array[${itemType}]`;
+  }
+  
+  return propSchema.type || 'any';
+}
+
+// =============================================================================
+// PARAMETER FORMATTING
+// =============================================================================
+
+/**
+ * Format parameters as documentation
+ */
+function formatParameters(params: Parameter[]): string {
+  if (!params || params.length === 0) return 'None';
+  
+  const queryParams = params.filter(p => p.in === 'query');
+  const pathParams = params.filter(p => p.in === 'path');
+  const headerParams = params.filter(p => p.in === 'header');
+  
+  const lines: string[] = [];
+  
+  if (pathParams.length > 0) {
+    lines.push('#### Path Parameters');
+    for (const p of pathParams) {
+      lines.push(formatParameter(p));
+    }
+  }
+  
+  if (queryParams.length > 0) {
+    lines.push('#### Query Parameters');
+    for (const p of queryParams) {
+      lines.push(formatParameter(p));
+    }
+  }
+  
+  if (headerParams.length > 0) {
+    lines.push('#### Header Parameters');
+    for (const p of headerParams) {
+      lines.push(formatParameter(p));
+    }
+  }
+  
+  return lines.join('\n');
+}
+
+/**
+ * Format a single parameter
+ */
+function formatParameter(p: Parameter): string {
+  const typeStr = p.schema?.type || 'string';
+  const reqStr = p.required ? 'Required' : 'Optional';
+  let line = `- **${p.name}** (${typeStr}) - ${reqStr}`;
+  
+  if (p.description) line += ` - ${p.description}`;
+  if (p.schema?.enum) line += ` (Allowed: ${p.schema.enum.map(e => `\`${e}\``).join(', ')})`;
+  if (p.schema?.default !== undefined) line += ` (Default: \`${p.schema.default}\`)`;
+  if (p.schema?.example !== undefined) line += ` (Example: \`${p.schema.example}\`)`;
+  
+  const constraints: string[] = [];
+  if (p.schema?.minimum !== undefined) constraints.push(`min: ${p.schema.minimum}`);
+  if (p.schema?.maximum !== undefined) constraints.push(`max: ${p.schema.maximum}`);
+  if (constraints.length > 0) line += ` [${constraints.join(', ')}]`;
+  
+  return line;
+}
+
+// =============================================================================
+// URL MAPPING (Docs-first approach using MDX frontmatter)
+// =============================================================================
+
+/**
+ * Build a URL lookup map by reading the `openapi:` frontmatter from MDX files.
+ * 
+ * Each MDX file contains frontmatter like:
+ *   openapi: get /payments
+ * 
+ * We build a map: "GET /payments" -> "https://docs.../api-reference/payments/get-payments"
+ * This ensures URLs are always correct since we use file paths as the source of truth.
+ */
+function buildDocUrlMap(docsRoot: string): void {
+  const apiRefDir = path.join(docsRoot, 'api-reference');
+  
+  if (!fs.existsSync(apiRefDir)) {
+    console.log('  ⚠️ No api-reference directory found, using fallback URL generation');
+    return;
+  }
+  
+  docUrlMap.clear();
+  
+  // Recursively find all MDX files and extract their openapi reference
+  function scanDir(dir: string, relativePath: string = ''): void {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+      
+      if (entry.isDirectory()) {
+        scanDir(fullPath, relPath);
+      } else if (entry.name.endsWith('.mdx')) {
+        try {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          
+          // Extract openapi reference from frontmatter
+          // Formats: 
+          //   openapi: get /payments
+          //   openapi: "post /checkouts"
+          const openapiMatch = content.match(/^openapi:\s*"?(\w+)\s+([^"\n\r]+)"?/m);
+          
+          if (openapiMatch) {
+            const method = openapiMatch[1].toUpperCase();
+            const apiPath = openapiMatch[2].trim().replace(/"$/, '');
+            
+            // Build the documentation URL from file path
+            const slug = relPath.replace(/\.mdx$/, '');
+            const docUrl = `${DOCS_BASE_URL}/api-reference/${slug}`;
+            
+            // Create lookup key: "METHOD /path" (e.g., "GET /payments")
+            const lookupKey = `${method} ${apiPath}`;
+            docUrlMap.set(lookupKey, docUrl);
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+    }
+  }
+  
+  scanDir(apiRefDir);
+  console.log(`  📂 Built URL map with ${docUrlMap.size} entries from api-reference MDX files`);
+}
+
+/**
+ * Get documentation URL for an operation.
+ * 
+ * Uses the method + path combination to look up the correct documentation URL
+ * from the map built by scanning actual MDX files' `openapi:` frontmatter.
+ */
+function getDocUrl(operationId: string, method: string, pathStr: string): string {
+  // Primary lookup: "METHOD /path" (e.g., "GET /payments")
+  const lookupKey = `${method.toUpperCase()} ${pathStr}`;
+  if (docUrlMap.has(lookupKey)) {
+    return docUrlMap.get(lookupKey)!;
+  }
+  
+  // Fallback: Generate URL based on operationId
+  // This means no MDX file exists for this endpoint
+  const pathParts = pathStr.split('/').filter(Boolean);
+  const resource = pathParts[0] || 'misc';
+  const slug = operationId
+    .replace(/_handler$/, '')
+    .replace(/_proxy$/, '')
+    .replace(/_/g, '-');
+  
+  console.warn(`⚠️ No MDX docs for: ${method.toUpperCase()} ${pathStr} (using fallback URL)`);
+  return `${DOCS_BASE_URL}/api-reference/${resource}/${slug}`;
+}
+
+// =============================================================================
+// CHUNK CREATION
+// =============================================================================
+
+/**
+ * Create an API documentation chunk for an endpoint
+ */
+function createApiDocChunk(
+  method: string,
+  pathStr: string,
+  operation: Operation,
+  schemas: Record<string, SchemaObject>,
+  servers: Array<{ url: string; description: string }>
+): DocChunk {
+  const operationId = operation.operationId || `${method}_${pathStr.replace(/\//g, '_')}`;
+  const docUrl = getDocUrl(operationId, method, pathStr);
+  const tag = operation.tags?.[0] || 'API';
+  
+  const actionName = operationId
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+  
+  // Build the API doc content
+  const lines: string[] = [];
+  
+  lines.push(`## ${method.toUpperCase()} ${pathStr}`);
+  lines.push('');
+  
+  lines.push(`### Description`);
+  lines.push(operation.summary || operation.description || `${actionName} endpoint.`);
+  lines.push('');
+  
+  lines.push(`### Method`);
+  lines.push(method.toUpperCase());
+  lines.push('');
+  
+  lines.push(`### Endpoint`);
+  lines.push(pathStr);
+  lines.push('');
+  
+  if (servers.length > 0) {
+    lines.push('#### Base URLs');
+    for (const server of servers) {
+      lines.push(`- ${server.url} (${server.description})`);
+    }
+    lines.push('');
+  }
+  
+  lines.push(`### Parameters`);
+  lines.push(formatParameters(operation.parameters || []));
+  lines.push('');
+  
+  // Request body
+  if (operation.requestBody?.content?.['application/json']) {
+    const jsonContent = operation.requestBody.content['application/json'];
+    const bodySchema = jsonContent.schema;
+    
+    lines.push(`### Request Body`);
+    if (bodySchema) {
+      if (bodySchema.$ref) {
+        const resolved = resolveSchema(bodySchema.$ref, schemas, new Set());
+        lines.push(formatSchemaProperties(resolved, schemas, '', 0));
+      } else {
+        lines.push(formatSchemaProperties(bodySchema as SchemaObject, schemas, '', 0));
+      }
+    }
+    lines.push('');
+    
+    const requestExample = jsonContent.example || generateExample(bodySchema as SchemaObject, schemas);
+    if (requestExample) {
+      lines.push(`### Request Example`);
+      lines.push('```json');
+      lines.push(JSON.stringify(requestExample, null, 2));
+      lines.push('```');
+      lines.push('');
+    }
+  }
+  
+  // Responses
+  if (operation.responses) {
+    lines.push(`### Response`);
+    
+    for (const [code, response] of Object.entries(operation.responses)) {
+      const statusType = code.startsWith('2') ? 'Success' : code.startsWith('4') ? 'Client Error' : 'Error';
+      lines.push(`#### ${statusType} Response (${code})`);
+      
+      if (response.description) {
+        lines.push(response.description);
+      }
+      
+      if (response.content?.['application/json']) {
+        const jsonContent = response.content['application/json'];
+        const respSchema = jsonContent.schema;
+        
+        if (respSchema) {
+          if (respSchema.$ref) {
+            const resolved = resolveSchema(respSchema.$ref, schemas, new Set());
+            const props = formatSchemaProperties(resolved, schemas, '', 0);
+            if (props) lines.push(props);
+          } else {
+            const props = formatSchemaProperties(respSchema as SchemaObject, schemas, '', 0);
+            if (props) lines.push(props);
+          }
+        }
+        
+        const responseExample = jsonContent.example || generateExample(respSchema as SchemaObject, schemas);
+        if (responseExample && code.startsWith('2')) {
+          lines.push('');
+          lines.push(`#### Response Example`);
+          lines.push('```json');
+          lines.push(JSON.stringify(responseExample, null, 2));
+          lines.push('```');
+        }
+      }
+      lines.push('');
+    }
+  }
+  
+  const content = lines.join('\n').trim();
+  
+  return {
+    id: `api/${operationId}`,
+    documentPath: `api-reference/${tag.toLowerCase()}/${operationId.replace(/_/g, '-')}`,
+    documentTitle: `${actionName} - ${method.toUpperCase()} ${pathStr}`,
+    category: 'api-reference',
+    heading: actionName,
+    headingLevel: 2,
+    content,
+    metadata: {
+      description: operation.summary || operation.description,
+      sourceUrl: docUrl,
+      method: method.toUpperCase(),
+      path: pathStr,
+      operationId,
+    },
+  };
+}
+
+/**
+ * Create a code sample chunk
+ */
+function createCodeSampleChunk(
+  method: string,
+  pathStr: string,
+  operation: Operation,
+  sample: CodeSample
+): DocChunk {
+  const operationId = operation.operationId || `${method}_${pathStr.replace(/\//g, '_')}`;
+  const docUrl = getDocUrl(operationId, method, pathStr);
+  const tag = operation.tags?.[0] || 'API';
+  
+  const actionName = operationId
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+  
+  const title = `${actionName} - ${sample.lang} Example`;
+  
+  const lines: string[] = [];
+  lines.push(`# ${title}`);
+  lines.push('');
+  lines.push(`${sample.lang} code example for \`${method.toUpperCase()} ${pathStr}\``);
+  lines.push('');
+  lines.push('```' + sample.lang.toLowerCase());
+  lines.push(sample.source);
+  lines.push('```');
+  
+  const content = lines.join('\n').trim();
+  
+  return {
+    id: `api/${operationId}/code/${sample.lang.toLowerCase()}`,
+    documentPath: `api-reference/${tag.toLowerCase()}/${operationId.replace(/_/g, '-')}`,
+    documentTitle: title,
+    category: 'api-reference',
+    heading: `${sample.lang} Example`,
+    headingLevel: 3,
+    content,
+    metadata: {
+      description: `${sample.lang} code example for ${actionName}`,
+      sourceUrl: docUrl,
+      language: sample.lang,
+      method: method.toUpperCase(),
+      path: pathStr,
+      operationId,
+    },
+  };
+}
+
+// =============================================================================
+// MAIN PARSING FUNCTIONS
+// =============================================================================
+
+/**
+ * Parse the OpenAPI spec and generate chunks
+ * @param openApiPath - Path to the OpenAPI YAML file
+ * @param docsRoot - Optional path to the docs root for URL mapping
+ */
+export function parseOpenApiSpec(openApiPath: string, docsRoot?: string): DocChunk[] {
+  console.log(`\n📖 Parsing OpenAPI spec: ${openApiPath}\n`);
+  
+  // Build URL map from actual folder structure if docsRoot provided
+  if (docsRoot) {
+    buildDocUrlMap(docsRoot);
+  }
+  
+  const content = fs.readFileSync(openApiPath, 'utf-8');
+  const spec: OpenAPISpec = parseYaml(content);
+  
+  const chunks: DocChunk[] = [];
+  const schemas = spec.components?.schemas || {};
+  const servers = spec.servers || [];
+  
+  let endpointCount = 0;
+  let codeSampleCount = 0;
+  
+  // Process each path
+  for (const [pathStr, pathItem] of Object.entries(spec.paths)) {
+    const methods: Array<[string, Operation | undefined]> = [
+      ['get', pathItem.get],
+      ['post', pathItem.post],
+      ['put', pathItem.put],
+      ['patch', pathItem.patch],
+      ['delete', pathItem.delete],
+    ];
+    
+    for (const [method, operation] of methods) {
+      if (!operation) continue;
+      
+      // Create API documentation chunk
+      const apiChunk = createApiDocChunk(method, pathStr, operation, schemas, servers);
+      chunks.push(apiChunk);
+      endpointCount++;
+      
+      // Create code sample chunks
+      if (operation['x-codeSamples']) {
+        for (const sample of operation['x-codeSamples']) {
+          const codeChunk = createCodeSampleChunk(method, pathStr, operation, sample);
+          chunks.push(codeChunk);
+          codeSampleCount++;
+        }
+      }
+    }
+  }
+  
+  console.log(`✅ Parsed ${endpointCount} API endpoints`);
+  console.log(`✅ Created ${codeSampleCount} code sample chunks`);
+  console.log(`✅ Total API chunks: ${chunks.length}\n`);
+  
+  return chunks;
+}
+
+/**
+ * Get OpenAPI version info
+ */
+export function getOpenApiInfo(openApiPath: string): { version: string; title: string } {
+  const content = fs.readFileSync(openApiPath, 'utf-8');
+  const spec: OpenAPISpec = parseYaml(content);
+  return {
+    version: spec.info.version,
+    title: spec.info.title,
+  };
+}
