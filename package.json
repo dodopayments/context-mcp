@@ -11,7 +11,9 @@
     "embed:docs": "tsx src/embeddings/embed.ts docs",
     "embed:sdk": "tsx src/embeddings/embed.ts sdk",
     "embed:billingsdk": "tsx src/embeddings/embed.ts billingsdk",
-    "api": "tsx src/api/server.ts"
+    "api": "tsx src/api/server.ts",
+    "mcp:remote": "tsx src/mcp/remote-server.ts",
+    "reindex": "tsx scripts/reindex.ts"
   },
   "keywords": [
     "mcp",
