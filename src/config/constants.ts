@@ -3,13 +3,13 @@
  */
 
 // Embedding configuration
-export const EMBEDDING_MODEL = 'text-embedding-3-small';
-export const EMBEDDING_DIMENSION = 1536;
+export const EMBEDDING_MODEL = 'text-embedding-3-large';
+export const EMBEDDING_DIMENSION = 3072;
 export const PINECONE_INDEX_NAME = 'dodo-knowledge-mcp';
 
 // Batch processing
-export const DEFAULT_BATCH_SIZE = 20;
-export const DELAY_BETWEEN_BATCHES = 0; // 0 second
+export const DEFAULT_BATCH_SIZE = 100;
+export const DELAY_BETWEEN_BATCHES = 0;
 export const MAX_RETRIES = 10;
 export const QUOTA_WAIT_TIME = 30000; // 30 seconds
 
@@ -22,5 +22,5 @@ export const PINECONE_METADATA_MAX_LENGTH = 8000;
 export const MIN_MEANINGFUL_CONTENT_LENGTH = 50;
 
 // API defaults
-export const DEFAULT_TOP_K = 20;
+export const DEFAULT_TOP_K = 10;
 export const MAX_TOP_K = 50;

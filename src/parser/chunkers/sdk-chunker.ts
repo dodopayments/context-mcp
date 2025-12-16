@@ -1,6 +1,6 @@
 /**
  * SDK Documentation Chunker - Optimized for GitHub SDK repositories
- * 
+ *
  * Features:
  * - Hierarchical section parsing with parent-child relationships
  * - Smart merging of small sections into optimal chunks
@@ -31,20 +31,17 @@ import {
  */
 function buildHeading(section: FlatSection, repoName: string): string {
   // Filter out generic breadcrumbs
-  const meaningfulBreadcrumbs = section.breadcrumbs.filter(b => 
-    b && 
-    b !== 'Introduction' && 
-    b !== 'Documentation' &&
-    b.length > 3
+  const meaningfulBreadcrumbs = section.breadcrumbs.filter(
+    b => b && b !== 'Introduction' && b !== 'Documentation' && b.length > 3
   );
-  
+
   const parts: string[] = [];
-  
+
   // Add last meaningful breadcrumb
   if (meaningfulBreadcrumbs.length > 0) {
     parts.push(meaningfulBreadcrumbs[meaningfulBreadcrumbs.length - 1]);
   }
-  
+
   // Add section heading
   if (section.heading && section.heading !== 'Introduction') {
     // For changelog entries, clean up version headings
@@ -54,11 +51,11 @@ function buildHeading(section: FlatSection, repoName: string): string {
       parts.push(cleanHeading(section.heading));
     }
   }
-  
+
   if (parts.length === 0) {
     return `${repoName} Documentation`;
   }
-  
+
   // Join with colon separator
   return parts.join(': ');
 }
@@ -74,16 +71,16 @@ function splitLargeFlatSection(section: FlatSection): FlatSection[] {
   if (section.content.length <= SDK_CHUNK_CONFIG.maxChunkSize) {
     return [section];
   }
-  
+
   const result: FlatSection[] = [];
   const content = section.content;
-  
+
   // Split at code block boundaries to keep them intact
   const parts = splitByCodeBlocks(content);
-  
+
   let currentChunk = '';
   let chunkIndex = 0;
-  
+
   for (const part of parts) {
     if (currentChunk.length + part.length <= SDK_CHUNK_CONFIG.maxChunkSize) {
       currentChunk += part;
@@ -93,23 +90,23 @@ function splitLargeFlatSection(section: FlatSection): FlatSection[] {
         result.push({
           ...section,
           heading: chunkIndex === 0 ? section.heading : `${section.heading} (continued)`,
-          content: currentChunk.trim()
+          content: currentChunk.trim(),
         });
         chunkIndex++;
       }
       currentChunk = part;
     }
   }
-  
+
   // Save final chunk
   if (currentChunk.trim().length >= SDK_CHUNK_CONFIG.minChunkSize / 2) {
     result.push({
       ...section,
       heading: chunkIndex === 0 ? section.heading : `${section.heading} (continued)`,
-      content: currentChunk.trim()
+      content: currentChunk.trim(),
     });
   }
-  
+
   return result.length > 0 ? result : [section];
 }
 
@@ -127,19 +124,23 @@ export function parseReadme(
   language: string = 'unknown'
 ): DocChunk[] {
   const normalizedContent = normalizeLineEndings(content);
-  
+
   // Parse -> Merge -> Split
   const tree = parseIntoTree(normalizedContent);
   const merged = mergeHierarchicalSections(tree, SDK_CHUNK_CONFIG);
-  
+
   const sections: FlatSection[] = [];
   for (const section of merged) {
     sections.push(...splitLargeFlatSection(section));
   }
-  
-  // Filter too-small chunks
-  const validSections = sections.filter(s => s.content.length >= SDK_CHUNK_CONFIG.minChunkSize / 2);
-  
+
+  // Filter too-small chunks and skip meta-content sections
+  const validSections = sections.filter(
+    s =>
+      s.content.length >= SDK_CHUNK_CONFIG.minChunkSize / 2 &&
+      !s.heading?.toLowerCase().includes('prompt for llm')
+  );
+
   // Convert to DocChunks with proper metadata
   return validSections.map((section, index) => ({
     id: `${repoName}/readme#${index}`,
@@ -155,7 +156,7 @@ export function parseReadme(
       repository: repoName,
       language,
       breadcrumbs: section.breadcrumbs,
-    }
+    },
   }));
 }
 
@@ -169,43 +170,43 @@ export function parseChangelog(
   language: string = 'unknown'
 ): DocChunk[] {
   const normalizedContent = normalizeLineEndings(content);
-  
+
   // Split by version headers
   const versionRegex = /^##?\s*\[?v?(\d+\.\d+\.\d+[^\]\n]*)\]?/gm;
   const parts: { version: string; content: string }[] = [];
   let match;
   let lastIndex = 0;
   let lastVersion = '';
-  
+
   while ((match = versionRegex.exec(normalizedContent)) !== null) {
     if (lastVersion) {
       parts.push({
         version: lastVersion,
-        content: normalizedContent.slice(lastIndex, match.index).trim()
+        content: normalizedContent.slice(lastIndex, match.index).trim(),
       });
     }
     lastVersion = match[1].trim();
     lastIndex = match.index;
   }
-  
+
   // Add final version
   if (lastVersion) {
     parts.push({
       version: lastVersion,
-      content: normalizedContent.slice(lastIndex).trim()
+      content: normalizedContent.slice(lastIndex).trim(),
     });
   }
-  
+
   // If no versions found, fall back to readme parsing
   if (parts.length === 0) {
     return parseReadme(content, sourceUrl, repoName);
   }
-  
+
   // Merge small changelog entries
   const chunks: DocChunk[] = [];
   let batch: typeof parts = [];
   let batchSize = 0;
-  
+
   for (const part of parts) {
     if (part.content.length >= SDK_CHUNK_CONFIG.minChunkSize) {
       // Flush batch
@@ -214,7 +215,7 @@ export function parseChangelog(
         batch = [];
         batchSize = 0;
       }
-      
+
       // Add large entry
       chunks.push({
         id: `${repoName}/changelog#${chunks.length}`,
@@ -230,7 +231,7 @@ export function parseChangelog(
           repository: repoName,
           language,
           version: part.version,
-        }
+        },
       });
     } else if (batchSize + part.content.length <= SDK_CHUNK_CONFIG.idealChunkSize) {
       batch.push(part);
@@ -244,12 +245,12 @@ export function parseChangelog(
       batchSize = part.content.length;
     }
   }
-  
+
   // Flush final batch
   if (batch.length > 0) {
     flushChangelogBatch(batch, chunks, repoName, sourceUrl, language);
   }
-  
+
   return chunks;
 }
 
@@ -265,11 +266,12 @@ function flushChangelogBatch(
 ): void {
   const mergedContent = batch.map(b => b.content).join('\n\n');
   const versions = batch.map(b => b.version);
-  
-  const heading = versions.length > 1
-    ? `Versions ${versions[versions.length - 1]} - ${versions[0]}`
-    : `Version ${versions[0]}`;
-  
+
+  const heading =
+    versions.length > 1
+      ? `Versions ${versions[versions.length - 1]} - ${versions[0]}`
+      : `Version ${versions[0]}`;
+
   chunks.push({
     id: `${repoName}/changelog#${chunks.length}`,
     documentPath: `${repoName}/CHANGELOG.md`,
@@ -284,7 +286,7 @@ function flushChangelogBatch(
       repository: repoName,
       language,
       version: versions[0],
-    }
+    },
   });
 }
 
@@ -298,16 +300,16 @@ export function parseMigration(
   language: string = 'unknown'
 ): DocChunk[] {
   const normalizedContent = normalizeLineEndings(content);
-  
+
   // Migration guides should stay more intact
   const tree = parseIntoTree(normalizedContent);
   const merged = mergeHierarchicalSections(tree, {
     ...SDK_CHUNK_CONFIG,
     minChunkSize: 100, // Lower threshold to keep more context
   });
-  
+
   const sections = merged.filter(s => s.content.length >= 100);
-  
+
   return sections.map((section, index) => ({
     id: `${repoName}/migration#${index}`,
     documentPath: `${repoName}/MIGRATION.md`,
@@ -322,7 +324,7 @@ export function parseMigration(
       repository: repoName,
       language,
       breadcrumbs: section.breadcrumbs,
-    }
+    },
   }));
 }
 
@@ -337,15 +339,15 @@ export function parseSDKFile(
   language: string = 'unknown'
 ): DocChunk[] {
   const lowerName = fileName.toLowerCase();
-  
+
   if (lowerName.includes('changelog')) {
     return parseChangelog(content, sourceUrl, repoName, language);
   }
-  
+
   if (lowerName.includes('migration') || lowerName.includes('upgrade')) {
     return parseMigration(content, sourceUrl, repoName, language);
   }
-  
+
   // Default: treat as README
   return parseReadme(content, sourceUrl, repoName, language);
 }

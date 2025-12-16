@@ -26,6 +26,17 @@ const SKIP_DIRS = new Set([
   'logo',
   'openapi',
   'snippets',
+  // Skip non-English documentation (translations)
+  'ar', // Arabic
+  'cn', // Chinese
+  'de', // German
+  'es', // Spanish
+  'fr', // French
+  'id', // Indonesian
+  'ja', // Japanese
+  'ko', // Korean
+  'pt-BR', // Portuguese (Brazil)
+  'vi', // Vietnamese
 ]);
 
 // Files to skip
