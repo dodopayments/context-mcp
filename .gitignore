@@ -4,6 +4,10 @@ node_modules/
 # Build output
 dist/
 
+# Wrangler generated types
+cloudflare-worker/worker-configuration.d.ts
+cloudflare-worker/.wrangler/
+
 # Environment
 .env
 .env.local
