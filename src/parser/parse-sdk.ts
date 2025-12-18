@@ -19,6 +19,10 @@ const REPOSITORIES: RepoConfig[] = [
   { url: 'https://github.com/dodopayments/dodo-adapters', language: 'typescript' },
   { url: 'https://github.com/dodopayments/ingestion-blueprints', language: 'typescript' },
   { url: 'https://github.com/dodopayments/dodopayments-csharp', language: 'csharp' },
+  { url: 'https://github.com/dodopayments/dodopayments-kotlin', language: 'kotlin' },
+  { url: 'https://github.com/dodopayments/dodo-migrate', language: 'typescript' },
+  { url: 'https://github.com/dodopayments/dodo-woocommerce', language: 'php' },
+  { url: 'https://github.com/dodopayments/dodopayments-figma', language: 'typescript' },
 ];
 
 const SKIP_DIRS = new Set([

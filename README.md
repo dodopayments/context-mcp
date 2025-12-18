@@ -5,130 +5,203 @@ An MCP (Model Context Protocol) server providing semantic search over Dodo Payme
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Docs Repos    │     │    Parsers      │     │    Pinecone     │
-│  ┌───────────┐  │     │  ┌───────────┐  │     │  ┌───────────┐  │
-│  │ dodo-docs │──┼────▶│  │MDX/OpenAPI│──┼────▶│  │  Vectors  │  │
-│  │ SDKs (6+) │  │     │  │SDK/Billing│  │     │  │  (3072d)  │  │
-│  │billingsdk │  │     │  └───────────┘  │     │  └───────────┘  │
-│  └───────────┘  │     └─────────────────┘     └────────┬────────┘
-└─────────────────┘                                      │
-                                                         ▼
-                    ┌────────────────────────────────────────────────┐
-                    │              MCP Server                        │
-                    │  ┌──────────────┐    ┌──────────────────────┐  │
-                    │  │ stdio (local)│    │ HTTP (remote/hosted) │  │
-                    │  └──────────────┘    └──────────────────────┘  │
-                    └────────────────────────────────────────────────┘
+                                    Daily Reindex (GitHub Actions)
+                                              |
+                                              v
++------------------+     +------------------+     +------------------+
+|   Source Repos   |     |     Parsers      |     |     Pinecone     |
+|                  |     |                  |     |                  |
+|  - dodo-docs     | --> |  - MDX/OpenAPI   | --> |  Vector Store    |
+|  - SDKs (10+)    |     |  - SDK markdowns |     |  (3072 dims)     |
+|  - billingsdk    |     |  - BillingSDK    |     |                  |
++------------------+     +------------------+     +--------+---------+
+                                                          |
+                                                          v
+                                              +-----------+-----------+
+                                              |  Cloudflare Worker    |
+                                              |                       |
+                                              |  /mcp  - MCP (HTTP)   |
+                                              |  /search - REST       |
+                                              +-----------------------+
 ```
 
-## Quick Start
+## Remote MCP Server
+
+The MCP server is deployed on Cloudflare Workers at:
+
+```
+https://dodo-knowledge-mcp.dodopayments.com/mcp
+```
+
+### Cursor
+
+Edit `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "dodo-knowledge-mcp": {
+      "url": "https://dodo-knowledge-mcp.dodopayments.com/mcp"
+    }
+  }
+}
+```
+
+### Windsurf
+
+Edit `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "dodo-knowledge-mcp": {
+      "serverUrl": "https://dodo-knowledge-mcp.dodopayments.com/mcp"
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Edit your config file:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "dodo-knowledge-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@latest", "https://dodo-knowledge-mcp.dodopayments.com/mcp"]
+    }
+  }
+}
+```
+
+## Local Development
+
+### Setup
 
 ```bash
 # Install dependencies
 npm install
 
-# Set up environment
+# Set up environment variables
 cp .env.example .env
-# Add your OPENAI_API_KEY and PINECONE_API_KEY
+# Add OPENAI_API_KEY and PINECONE_API_KEY
+```
 
-# Parse and embed all documentation
+### Indexing Documentation
+
+```bash
+# Full reindex (parse + embed all sources)
 npm run reindex
 
-# Start the MCP server (for local use)
-npm run start
+# Or run individual steps:
+npm run parse:docs        # Parse main documentation
+npm run parse:sdk         # Parse SDK repositories
+npm run parse:billingsdk  # Parse BillingSDK
 
-# Or start the remote HTTP server (for hosted deployment)
-npm run mcp:remote
+npm run embed:docs        # Embed docs to Pinecone
+npm run embed:sdk         # Embed SDKs to Pinecone
+npm run embed:billingsdk  # Embed BillingSDK to Pinecone
+```
+
+### Cloudflare Worker Development
+
+```bash
+cd cloudflare-worker
+
+# Install dependencies
+npm install
+
+# Set secrets
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put PINECONE_API_KEY
+
+# Local development
+npm run dev
+
+# Deploy
+npm run deploy
 ```
 
 ## Environment Variables
 
+### Root Project (Indexing Scripts)
+
+Required for running indexing and embedding scripts locally:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | **Yes** | - | OpenAI API key for generating embeddings (text-embedding-3-large) |
+| `PINECONE_API_KEY` | **Yes** | - | Pinecone API key for vector storage and search |
+
+### Cloudflare Worker (Runtime)
+
+#### Secrets (set via `wrangler secret put`)
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_KEY` | Yes | OpenAI API key for embeddings |
-| `PINECONE_API_KEY` | Yes | Pinecone API key for vector storage |
-| `DODO_DOCS_API_URL` | No | API URL for stdio MCP server (default: `http://localhost:3000`) |
-| `MCP_PORT` | No | Port for remote MCP server (default: `3001`) |
-| `PINECONE_CLOUD` | No | Pinecone cloud provider (default: `aws`) |
-| `PINECONE_REGION` | No | Pinecone region (default: `us-east-1`) |
+| `OPENAI_API_KEY` | **Yes** | OpenAI API key for query embeddings |
+| `PINECONE_API_KEY` | **Yes** | Pinecone API key for vector search |
 
-## MCP Configuration
+#### Configuration Variables (set in `wrangler.jsonc`)
 
-### Local (stdio transport)
-
-Requires the API server running (`npm run api`):
-
-```json
-{
-  "mcpServers": {
-    "dodo-knowledge-mcp": {
-      "command": "node",
-      "args": ["dist/mcp/server.js"],
-      "cwd": "/path/to/dodo-knowledge-mcp"
-    }
-  }
-}
-```
-
-### Remote (HTTP transport)
-
-Standalone server with built-in Pinecone search:
-
-```json
-{
-  "mcpServers": {
-    "dodo-knowledge-mcp": {
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PINECONE_INDEX_NAME` | No | `dodo-knowledge-mcp` | Name of the Pinecone index |
+| `EMBEDDING_MODEL` | No | `text-embedding-3-large` | OpenAI embedding model to use |
+| `DEFAULT_TOP_K` | No | `10` | Default number of search results |
+| `MAX_TOP_K` | No | `50` | Maximum allowed search results |
 
 ## Available Scripts
 
-### Parsing
-
-```bash
-npm run parse:docs        # Parse main documentation (MDX + OpenAPI)
-npm run parse:sdk         # Parse SDK repositories
-npm run parse:billingsdk  # Parse BillingSDK documentation
-```
-
-### Embedding
-
-```bash
-npm run embed:docs        # Embed main docs to Pinecone
-npm run embed:sdk         # Embed SDK docs to Pinecone
-npm run embed:billingsdk  # Embed BillingSDK to Pinecone
-```
-
-### Servers
-
-```bash
-npm run api              # Start REST API server (port 3000)
-npm run start            # Start MCP server (stdio transport)
-npm run mcp:remote       # Start remote MCP server (HTTP transport)
-```
-
-### Operations
-
-```bash
-npm run reindex          # Full reindex: parse + embed all sources
-npm run build            # Compile TypeScript to dist/
-```
+| Script | Description |
+|--------|-------------|
+| `npm run parse:docs` | Parse main documentation (MDX + OpenAPI) |
+| `npm run parse:sdk` | Parse SDK repositories |
+| `npm run parse:billingsdk` | Parse BillingSDK documentation |
+| `npm run embed:docs` | Embed main docs to Pinecone |
+| `npm run embed:sdk` | Embed SDK docs to Pinecone |
+| `npm run embed:billingsdk` | Embed BillingSDK to Pinecone |
+| `npm run clean:vectors` | Clear all vectors from Pinecone |
+| `npm run reindex` | Full reindex (clear + parse + embed all) |
 
 ## Documentation Sources
 
 | Source | Repository | Content |
 |--------|------------|---------|
-| **Docs** | `dodopayments/dodo-docs` | API reference, guides, features, OpenAPI spec |
-| **SDK** | `dodopayments/dodopayments-*` | TypeScript, Python, Go, PHP, Java, Ruby, C# SDKs |
-| **BillingSDK** | `dodopayments/billingsdk` | React billing components (pricing tables, checkout) |
+| Docs | `dodopayments/dodo-docs` | API reference, guides, features, OpenAPI spec |
+| SDK | `dodopayments/dodopayments-*` | TypeScript, Python, Go, PHP, Java, Ruby, C# SDKs |
+| BillingSDK | `dodopayments/billingsdk` | React billing components |
 
-## Tool: `search_docs`
+## API Endpoints
 
-The MCP server exposes a single tool for semantic search:
+The Cloudflare Worker exposes:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/mcp` | POST | MCP Streamable HTTP |
+| `/search` | GET, POST | REST API for direct search |
+| `/health` | GET | Health check |
+| `/` | GET | Landing page with setup instructions |
+
+### REST API Usage
+
+```bash
+# GET request with query params
+curl "https://dodo-knowledge-mcp.dodopayments.com/search?query=how+to+create+a+payment&limit=10"
+
+# POST request with JSON body (also supported)
+curl -X POST https://dodo-knowledge-mcp.dodopayments.com/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "how to create a payment", "limit": 10}'
+```
+
+## MCP Tool: search_docs
+
+The server exposes a single tool for semantic search:
 
 ```typescript
 search_docs({
@@ -137,49 +210,60 @@ search_docs({
 })
 ```
 
-**Example queries:**
-- `"how to create a payment"`
-- `"webhook signature verification typescript"`
-- `"pricing table component react"`
-- `"subscription lifecycle events"`
-
-## API Endpoints
-
-When running the API server (`npm run api`):
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/llms.txt` | GET | Search docs (`?topic=query&limit=20`) |
-| `/health` | GET | Health check |
-| `/` | GET | API info |
-
-## Technical Details
-
-- **Embedding Model**: `text-embedding-3-large` (3072 dimensions)
-- **Vector Store**: Pinecone (serverless)
-- **Chunking**: Semantic splitting by headings with configurable sizes
-- **Index Name**: `dodo-knowledge-mcp`
+Example queries:
+- "how to create a payment"
+- "webhook signature verification typescript"
+- "pricing table component react"
+- "subscription lifecycle events"
 
 ## Project Structure
 
 ```
-src/
-├── api/server.ts           # REST API server
-├── mcp/
-│   ├── server.ts           # MCP server (stdio)
-│   └── remote-server.ts    # MCP server (HTTP)
-├── embeddings/
-│   ├── core.ts             # Pinecone/OpenAI utilities
-│   └── embed.ts            # Embedding generator
-├── parser/
-│   ├── chunkers/           # Source-specific chunkers
-│   ├── core/               # Shared parsing utilities
-│   └── parse-*.ts          # CLI parse scripts
-├── config/                 # Constants and env validation
-└── types/                  # TypeScript interfaces
+dodo-mcp/
+├── cloudflare-worker/          # Cloudflare Worker (MCP + REST API)
+│   ├── src/index.ts            # Worker entry point
+│   ├── wrangler.jsonc          # Wrangler configuration
+│   └── package.json
+├── src/
+│   ├── embeddings/             # Embedding generation
+│   │   ├── core.ts             # Pinecone/OpenAI utilities
+│   │   └── embed.ts            # CLI embedding script
+│   ├── parser/
+│   │   ├── chunkers/           # Source-specific chunkers
+│   │   ├── core/               # Shared parsing utilities
+│   │   └── parse-*.ts          # Parse scripts
+│   ├── config/                 # Constants and env validation
+│   └── types/                  # TypeScript interfaces
+├── scripts/
+│   ├── reindex.ts              # Daily reindex orchestration
+│   └── clean-vectors.ts        # Pinecone cleanup utility
+├── data/                       # Generated index files (gitignored)
+└── .github/workflows/
+    └── daily-reindex.yml       # Automated daily reindex
 ```
+
+## Technical Details
+
+- Embedding Model: `text-embedding-3-large` (3072 dimensions)
+- Vector Store: Pinecone (serverless, AWS us-east-1)
+- Chunking: Semantic splitting by headings
+- Index Name: `dodo-knowledge-mcp`
+- Runtime: Cloudflare Workers with Durable Objects
+
+## GitHub Actions
+
+The repository includes a workflow for automated daily reindexing:
+
+- Runs daily at 2 AM UTC
+- Clears existing vectors
+- Parses all documentation sources
+- Generates and uploads new embeddings
+- Can be triggered manually via workflow_dispatch
+
+Required secrets:
+- `OPENAI_API_KEY`
+- `PINECONE_API_KEY`
 
 ## License
 
 Proprietary - Dodo Payments
-

@@ -24,9 +24,3 @@ export function validateEmbeddingEnv(): void {
   validateEnv(['OPENAI_API_KEY', 'PINECONE_API_KEY']);
 }
 
-/**
- * Validate API-related environment variables
- */
-export function validateApiEnv(): void {
-  validateEnv(['OPENAI_API_KEY', 'PINECONE_API_KEY']);
-}
