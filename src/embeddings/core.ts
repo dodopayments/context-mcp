@@ -111,6 +111,58 @@ export async function initPineconeIndex(pc: Pinecone): Promise<void> {
   }
 }
 
+/**
+ * Clear all vectors from Pinecone index
+ * Use before full reindex to remove stale vectors
+ */
+export async function clearPineconeIndex(pc: Pinecone): Promise<{ success: boolean; vectorCount?: number }> {
+  try {
+    const index = pc.index(PINECONE_INDEX_NAME);
+    
+    // Get current stats before clearing
+    const stats = await index.describeIndexStats();
+    const vectorCount = stats.totalRecordCount || 0;
+    
+    if (vectorCount === 0) {
+      console.log('   Index is already empty');
+      return { success: true, vectorCount: 0 };
+    }
+    
+    console.log(`   Found ${vectorCount.toLocaleString()} vectors to delete...`);
+    
+    // Delete all vectors in the default namespace
+    await index.namespace('').deleteAll();
+    
+    // Wait a moment for deletion to propagate
+    await sleep(2000);
+    
+    // Verify deletion
+    const newStats = await index.describeIndexStats();
+    const remaining = newStats.totalRecordCount || 0;
+    
+    if (remaining > 0) {
+      console.log(`   ⚠️ ${remaining} vectors still remaining (may take time to propagate)`);
+    }
+    
+    return { success: true, vectorCount };
+  } catch (error) {
+    console.error('   Error clearing index:', error);
+    return { success: false };
+  }
+}
+
+/**
+ * Get current index statistics
+ */
+export async function getPineconeStats(pc: Pinecone): Promise<{ vectorCount: number; dimension: number }> {
+  const index = pc.index(PINECONE_INDEX_NAME);
+  const stats = await index.describeIndexStats();
+  return {
+    vectorCount: stats.totalRecordCount || 0,
+    dimension: stats.dimension || EMBEDDING_DIMENSION,
+  };
+}
+
 // =============================================================================
 // CONTENT UTILITIES
 // =============================================================================

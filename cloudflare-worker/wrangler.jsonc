@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dodo-knowledge-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Durable Objects for MCP state management
+  "migrations": [
+    {
+      "new_sqlite_classes": ["DodoKnowledgeMCP"],
+      "tag": "v1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "DodoKnowledgeMCP",
+        "name": "MCP_OBJECT"
+      }
+    ]
+  },
+
+  // Environment variables (non-sensitive)
+  "vars": {
+    "PINECONE_INDEX_NAME": "dodo-knowledge-mcp",
+    "EMBEDDING_MODEL": "text-embedding-3-large",
+    "DEFAULT_TOP_K": "10",
+    "MAX_TOP_K": "50"
+  },
+
+  // Enable observability
+  "observability": {
+    "enabled": true
+  }
+}
+

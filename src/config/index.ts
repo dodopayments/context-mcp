@@ -32,5 +32,4 @@ export {
 export {
   validateEnv,
   validateEmbeddingEnv,
-  validateApiEnv,
 } from './env.js';

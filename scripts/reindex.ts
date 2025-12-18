@@ -2,9 +2,10 @@
  * Daily Documentation Reindex Script
  *
  * Orchestrates full reindexing of all documentation sources:
- * 1. Parses docs from all repositories (docs, sdk, billingsdk)
- * 2. Generates embeddings for all chunks
- * 3. Upserts vectors to Pinecone
+ * 1. Clears existing vectors from Pinecone (removes stale data)
+ * 2. Parses docs from all repositories (docs, sdk, billingsdk)
+ * 3. Generates embeddings for all chunks
+ * 4. Upserts vectors to Pinecone
  *
  * Usage: npm run reindex
  */
@@ -14,6 +15,9 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { Pinecone } from '@pinecone-database/pinecone';
+import 'dotenv/config';
+import { clearPineconeIndex, initPineconeIndex } from '../src/embeddings/core.js';
 
 const execAsync = promisify(exec);
 
@@ -25,6 +29,11 @@ interface ReindexStats {
   startTime: string;
   endTime?: string;
   duration?: number;
+  cleanup: {
+    vectorsDeleted: number;
+    duration: number;
+    success: boolean;
+  };
   sources: Array<{
     name: string;
     parseTime: number;
@@ -43,6 +52,11 @@ async function main() {
 
   const stats: ReindexStats = {
     startTime: new Date().toISOString(),
+    cleanup: {
+      vectorsDeleted: 0,
+      duration: 0,
+      success: false,
+    },
     sources: [],
     totalChunks: 0,
     totalErrors: 0,
@@ -51,6 +65,36 @@ async function main() {
   const globalStartTime = Date.now();
 
   try {
+    // ================================================================
+    // STEP 0: CLEAR EXISTING VECTORS
+    // ================================================================
+    console.log('\n🗑️  CLEARING EXISTING VECTORS');
+    console.log('═'.repeat(60));
+    
+    if (!process.env.PINECONE_API_KEY) {
+      console.error('❌ PINECONE_API_KEY not set');
+      process.exit(1);
+    }
+    
+    const cleanupStart = Date.now();
+    const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
+    
+    // Ensure index exists
+    await initPineconeIndex(pc);
+    
+    // Clear all vectors
+    const clearResult = await clearPineconeIndex(pc);
+    stats.cleanup.duration = (Date.now() - cleanupStart) / 1000;
+    stats.cleanup.success = clearResult.success;
+    stats.cleanup.vectorsDeleted = clearResult.vectorCount || 0;
+    
+    if (clearResult.success) {
+      console.log(`   ✅ Cleared ${stats.cleanup.vectorsDeleted.toLocaleString()} vectors in ${stats.cleanup.duration.toFixed(2)}s`);
+    } else {
+      console.error('   ❌ Failed to clear index');
+      stats.totalErrors++;
+    }
+
     // Define all documentation sources
     const sources = [
       {
@@ -194,6 +238,7 @@ async function main() {
       minutes > 0 ? `${minutes}m ${seconds.toFixed(0)}s` : `${totalDuration.toFixed(2)}s`;
 
     console.log(`\n⏱️  Total Duration: ${timeStr}`);
+    console.log(`🗑️  Vectors Cleared: ${stats.cleanup.vectorsDeleted.toLocaleString()}`);
     console.log(`📦 Total Chunks: ${stats.totalChunks.toLocaleString()}`);
     console.log(
       `🎯 Success Rate: ${stats.sources.filter(s => s.success).length}/${stats.sources.length}`
