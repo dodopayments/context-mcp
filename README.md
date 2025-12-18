@@ -30,7 +30,7 @@ An MCP (Model Context Protocol) server providing semantic search over Dodo Payme
 The MCP server is deployed on Cloudflare Workers at:
 
 ```
-https://dodo-knowledge-mcp.dodopayments.com/mcp
+https://knowledge.dodopayments.com/mcp
 ```
 
 ### Cursor
@@ -41,7 +41,7 @@ Edit `~/.cursor/mcp.json`:
 {
   "mcpServers": {
     "dodo-knowledge-mcp": {
-      "url": "https://dodo-knowledge-mcp.dodopayments.com/mcp"
+      "url": "https://knowledge.dodopayments.com/mcp"
     }
   }
 }
@@ -55,7 +55,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
 {
   "mcpServers": {
     "dodo-knowledge-mcp": {
-      "serverUrl": "https://dodo-knowledge-mcp.dodopayments.com/mcp"
+      "serverUrl": "https://knowledge.dodopayments.com/mcp"
     }
   }
 }
@@ -72,7 +72,7 @@ Edit your config file:
   "mcpServers": {
     "dodo-knowledge-mcp": {
       "command": "npx",
-      "args": ["-y", "mcp-remote@latest", "https://dodo-knowledge-mcp.dodopayments.com/mcp"]
+      "args": ["-y", "mcp-remote@latest", "https://knowledge.dodopayments.com/mcp"]
     }
   }
 }
@@ -191,10 +191,10 @@ The Cloudflare Worker exposes:
 
 ```bash
 # GET request with query params
-curl "https://dodo-knowledge-mcp.dodopayments.com/search?query=how+to+create+a+payment&limit=10"
+curl "https://knowledge.dodopayments.com/search?query=how+to+create+a+payment&limit=10"
 
-# POST request with JSON body (also supported)
-curl -X POST https://dodo-knowledge-mcp.dodopayments.com/search \
+# POST request with JSON body
+curl -X POST https://knowledge.dodopayments.com/search \
   -H "Content-Type: application/json" \
   -d '{"query": "how to create a payment", "limit": 10}'
 ```
@@ -219,7 +219,7 @@ Example queries:
 ## Project Structure
 
 ```
-dodo-mcp/
+dodo-knowledge-mcp/
 ├── cloudflare-worker/          # Cloudflare Worker (MCP + REST API)
 │   ├── src/index.ts            # Worker entry point
 │   ├── wrangler.jsonc          # Wrangler configuration
