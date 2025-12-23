@@ -32,10 +32,13 @@ const SKIP_DIRS = new Set([
   'de', // German
   'es', // Spanish
   'fr', // French
+  'hi', // Hindi
   'id', // Indonesian
+  'it', // Italian
   'ja', // Japanese
   'ko', // Korean
   'pt-BR', // Portuguese (Brazil)
+  'sv', // Swedish
   'vi', // Vietnamese
 ]);
 
