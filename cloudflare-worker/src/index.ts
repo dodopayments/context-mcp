@@ -49,7 +49,11 @@ interface SearchResult {
 // SEARCH FUNCTIONALITY
 // =============================================================================
 
-async function generateQueryEmbedding(openai: OpenAI, query: string, model: string): Promise<number[]> {
+async function generateQueryEmbedding(
+  openai: OpenAI,
+  query: string,
+  model: string
+): Promise<number[]> {
   const response = await openai.embeddings.create({
     model,
     input: [query],
@@ -57,25 +61,71 @@ async function generateQueryEmbedding(openai: OpenAI, query: string, model: stri
   return response.data[0].embedding;
 }
 
+// =============================================================================
+// PINECONE RE-RANKING
+// =============================================================================
+
+const MAX_RERANK_CHARS = 1200; // ~300 tokens to stay under 512 limit
+
+async function rerankWithPinecone(
+  pinecone: Pinecone,
+  query: string,
+  documents: SearchResult[],
+  topN: number
+): Promise<SearchResult[]> {
+  try {
+    const docsForRerank = documents.map((d, idx) => {
+      const fullText = `${d.title} - ${d.heading}\n${d.content}`;
+      const text =
+        fullText.length > MAX_RERANK_CHARS ? fullText.slice(0, MAX_RERANK_CHARS) + '...' : fullText;
+      return { id: String(idx), text };
+    });
+
+    const rerankResult = await pinecone.inference.rerank(
+      'pinecone-rerank-v0',
+      query,
+      docsForRerank,
+      { topN, returnDocuments: false }
+    );
+
+    return rerankResult.data.map(r => ({
+      ...documents[r.index],
+      score: Math.round((r.score || 0) * 100) / 100,
+    }));
+  } catch (error) {
+    console.error('[Rerank] Failed:', error);
+    return documents.slice(0, topN);
+  }
+}
+
+// =============================================================================
+// SEARCH WITH RERANKING
+// =============================================================================
+
+const RERANK_FETCH_COUNT = 30;
+const DEFAULT_RETURN_COUNT = 5;
+const MAX_RETURN_COUNT = 20;
+
 async function searchDocs(
   openai: OpenAI,
   pinecone: Pinecone,
   env: Env,
   query: string,
-  limit: number
+  limit: number = DEFAULT_RETURN_COUNT
 ): Promise<SearchResult[]> {
+  // Clamp limit to valid range
+  const returnCount = Math.min(Math.max(1, limit), MAX_RETURN_COUNT);
   const index = pinecone.index(env.PINECONE_INDEX_NAME);
   const queryEmbedding = await generateQueryEmbedding(openai, query, env.EMBEDDING_MODEL);
-  const maxTopK = parseInt(env.MAX_TOP_K, 10);
 
   const results = await index.query({
     vector: queryEmbedding,
-    topK: Math.min(limit, maxTopK),
+    topK: RERANK_FETCH_COUNT,
     includeMetadata: true,
   });
 
-  return (
-    results.matches?.map((match) => ({
+  const searchResults: SearchResult[] =
+    results.matches?.map(match => ({
       score: Math.round((match.score || 0) * 100) / 100,
       title: String(match.metadata?.documentTitle || ''),
       heading: String(match.metadata?.heading || ''),
@@ -84,8 +134,13 @@ async function searchDocs(
       method: match.metadata?.method as string | undefined,
       path: match.metadata?.path as string | undefined,
       language: match.metadata?.language as string | undefined,
-    })) || []
-  );
+    })) || [];
+
+  if (searchResults.length > 0) {
+    return rerankWithPinecone(pinecone, query, searchResults, returnCount);
+  }
+
+  return [];
 }
 
 function formatResults(results: SearchResult[], query: string): string {
@@ -98,7 +153,7 @@ function formatResults(results: SearchResult[], query: string): string {
 
   const separator = '-'.repeat(40);
 
-  results.forEach((result) => {
+  results.forEach(result => {
     lines.push(separator);
     lines.push(`## ${result.title}`);
     if (result.url) lines.push(`Source: ${result.url}`);
@@ -135,7 +190,8 @@ export class DodoKnowledgeMCP extends McpAgent<Env> {
       'search_docs',
       {
         title: 'Search Dodo Payments Documentation',
-        description: 'Search the Dodo Payments documentation using semantic search across API Reference, SDK docs, BillingSDK, and guides.',
+        description:
+          'Search the Dodo Payments documentation using semantic search across API Reference, SDK docs, BillingSDK, and guides.',
         inputSchema: {
           query: z
             .string()
@@ -145,14 +201,14 @@ export class DodoKnowledgeMCP extends McpAgent<Env> {
           limit: z
             .number()
             .min(1)
-            .max(50)
+            .max(20)
             .optional()
-            .describe('Number of results (default: 10, max: 50)'),
+            .describe('Number of results to return (default: 5, max: 20)'),
         },
       },
       async ({ query, limit }) => {
         try {
-          const results = await searchDocs(openai, pinecone, env, query, limit || defaultTopK);
+          const results = await searchDocs(openai, pinecone, env, query, limit);
           const formatted = formatResults(results, query);
 
           return {
@@ -321,7 +377,7 @@ export default {
 
       try {
         let query: string | null = null;
-        let limit = parseInt(env.DEFAULT_TOP_K, 10);
+        let limit = 5;
 
         if (request.method === 'GET') {
           // GET /search?query=...&limit=...
@@ -330,7 +386,7 @@ export default {
           if (limitParam) limit = parseInt(limitParam, 10) || limit;
         } else if (request.method === 'POST') {
           // POST /search with JSON body
-          const body = await request.json() as { query?: string; limit?: number };
+          const body = (await request.json()) as { query?: string; limit?: number };
           query = body.query || null;
           if (body.limit) limit = body.limit;
         } else {
@@ -341,10 +397,10 @@ export default {
         }
 
         if (!query) {
-          return new Response(
-            JSON.stringify({ error: 'Missing required parameter: query' }),
-            { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-          );
+          return new Response(JSON.stringify({ error: 'Missing required parameter: query' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
         }
 
         const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -360,10 +416,10 @@ export default {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        return new Response(
-          JSON.stringify({ error: message }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
+        return new Response(JSON.stringify({ error: message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
     }
 
