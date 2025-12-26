@@ -1,11 +1,10 @@
 /**
  * Core types for documentation parsing and chunking
  * 
- * These types are shared between:
- * - docs-chunker.ts (MDX documentation files)
- * - sdk-chunker.ts (GitHub SDK repositories)
+ * These types are shared between all parsers:
+ * - mdx-chunker.ts (MDX/JSX documentation)
+ * - markdown-chunker.ts (plain markdown files)
  * - openapi-parser.ts (API specification)
- * - billingsdk-chunker.ts (BillingSDK Fumadocs)
  */
 
 // =============================================================================
@@ -16,18 +15,6 @@
 export interface DocFrontmatter {
   title: string;
   description?: string;
-  sidebarTitle?: string;
-  icon?: string;
-  tag?: string;
-}
-
-/** A parsed document before chunking */
-export interface ParsedDocument {
-  path: string;           // Relative path from docs root
-  slug: string;           // URL-friendly slug
-  frontmatter: DocFrontmatter;
-  content: string;        // Raw content without frontmatter
-  category: string;       // Top-level category (api-reference, features, etc.)
 }
 
 // =============================================================================
@@ -53,7 +40,6 @@ export interface DocChunk {
 
   // === Content ===
   heading: string;          // Section heading - clean, no markdown/newlines
-  headingLevel: number;     // H1=1, H2=2, etc. (0 for intro sections)
   content: string;          // The actual chunk content for embedding
   
   // === Metadata ===
@@ -64,51 +50,18 @@ export interface DocChunk {
 export interface ChunkMetadata {
   // === Common ===
   description?: string;       // Short summary of the chunk
-  tags?: string[];            // Searchable tags (optional)
   sourceUrl?: string;         // Full URL to the source
 
   // === API Documentation (from OpenAPI) ===
   method?: string;            // HTTP method (GET, POST, etc.) - for API chunks
   path?: string;              // API path (e.g., /v1/payments)
-  operationId?: string;       // OpenAPI operation ID
   
-  // === Code samples ===
+  // === Code/SDK context ===
   language?: string;          // Programming language (typescript, python, etc.)
-  codeLanguage?: string;      // Language of code block if chunk is primarily code
-
-  // === SDK Documentation ===
   repository?: string;        // GitHub repo (e.g., "dodopayments/dodopayments-typescript")
   
-  // === Context ===
-  breadcrumbs?: string[];     // Parent headings for hierarchical context
+  // === Version (for changelogs) ===
   version?: string;           // Version number (for changelogs)
-}
-
-// =============================================================================
-// INDEX - Collection of all chunks
-// =============================================================================
-
-/** Complete documentation index */
-export interface DocsIndex {
-  documents: ParsedDocument[];
-  chunks: DocChunk[];
-  categories: string[];
-  generatedAt: string;
-}
-
-/** SDK documentation index with repository metadata */
-export interface SDKIndex {
-  generatedAt: string;
-  totalChunks: number;
-  repositories: RepositoryInfo[];
-  chunks: DocChunk[];
-}
-
-export interface RepositoryInfo {
-  repo: string;
-  language: string;
-  files: number;
-  chunks: number;
 }
 
 // =============================================================================

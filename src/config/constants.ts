@@ -2,10 +2,9 @@
  * Shared constants for embeddings and API
  */
 
-// Embedding configuration
+// Embedding configuration (defaults - should come from config.yaml)
 export const EMBEDDING_MODEL = 'text-embedding-3-large';
 export const EMBEDDING_DIMENSION = 3072;
-export const PINECONE_INDEX_NAME = 'dodo-knowledge-mcp';
 
 // Batch processing
 export const DEFAULT_BATCH_SIZE = 100;

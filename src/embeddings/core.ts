@@ -7,7 +7,6 @@ import OpenAI from 'openai';
 import {
   EMBEDDING_MODEL,
   EMBEDDING_DIMENSION,
-  PINECONE_INDEX_NAME,
   PINECONE_CLOUD,
   PINECONE_REGION,
   PINECONE_METADATA_MAX_LENGTH,
@@ -76,21 +75,32 @@ export async function generateQueryEmbedding(
 
 /**
  * Initialize Pinecone index, creating if it doesn't exist
+ * @param pc - Pinecone client
+ * @param indexName - Name of the index (from config)
+ * @param dimension - Embedding dimension (from config)
+ * @param cloud - Pinecone cloud provider (from config)
+ * @param region - Pinecone region (from config)
  */
-export async function initPineconeIndex(pc: Pinecone): Promise<void> {
+export async function initPineconeIndex(
+  pc: Pinecone,
+  indexName: string,
+  dimension: number = EMBEDDING_DIMENSION,
+  cloud: string = PINECONE_CLOUD,
+  region: string = PINECONE_REGION
+): Promise<void> {
   const indexes = await pc.listIndexes();
-  const indexExists = indexes.indexes?.some(i => i.name === PINECONE_INDEX_NAME);
+  const indexExists = indexes.indexes?.some(i => i.name === indexName);
   
   if (!indexExists) {
-    console.log(`📦 Creating Pinecone index: ${PINECONE_INDEX_NAME}`);
+    console.log(`📦 Creating Pinecone index: ${indexName}`);
     await pc.createIndex({
-      name: PINECONE_INDEX_NAME,
-      dimension: EMBEDDING_DIMENSION,
+      name: indexName,
+      dimension: dimension,
       metric: 'cosine',
       spec: {
         serverless: {
-          cloud: PINECONE_CLOUD as 'aws' | 'gcp' | 'azure',
-          region: PINECONE_REGION,
+          cloud: cloud as 'aws' | 'gcp' | 'azure',
+          region: region,
         },
       },
     });
@@ -98,7 +108,7 @@ export async function initPineconeIndex(pc: Pinecone): Promise<void> {
     console.log('⏳ Waiting for index to be ready...');
     let ready = false;
     while (!ready) {
-      const description = await pc.describeIndex(PINECONE_INDEX_NAME);
+      const description = await pc.describeIndex(indexName);
       ready = description.status?.ready ?? false;
       if (!ready) {
         await sleep(2000);
@@ -107,17 +117,22 @@ export async function initPineconeIndex(pc: Pinecone): Promise<void> {
     }
     console.log('\n✅ Index ready!');
   } else {
-    console.log(`✅ Using existing index: ${PINECONE_INDEX_NAME}`);
+    console.log(`✅ Using existing index: ${indexName}`);
   }
 }
 
 /**
  * Clear all vectors from Pinecone index
  * Use before full reindex to remove stale vectors
+ * @param pc - Pinecone client
+ * @param indexName - Name of the index (from config)
  */
-export async function clearPineconeIndex(pc: Pinecone): Promise<{ success: boolean; vectorCount?: number }> {
+export async function clearPineconeIndex(
+  pc: Pinecone,
+  indexName: string
+): Promise<{ success: boolean; vectorCount?: number }> {
   try {
-    const index = pc.index(PINECONE_INDEX_NAME);
+    const index = pc.index(indexName);
     
     // Get current stats before clearing
     const stats = await index.describeIndexStats();
@@ -153,9 +168,14 @@ export async function clearPineconeIndex(pc: Pinecone): Promise<{ success: boole
 
 /**
  * Get current index statistics
+ * @param pc - Pinecone client
+ * @param indexName - Name of the index (from config)
  */
-export async function getPineconeStats(pc: Pinecone): Promise<{ vectorCount: number; dimension: number }> {
-  const index = pc.index(PINECONE_INDEX_NAME);
+export async function getPineconeStats(
+  pc: Pinecone,
+  indexName: string
+): Promise<{ vectorCount: number; dimension: number }> {
+  const index = pc.index(indexName);
   const stats = await index.describeIndexStats();
   return {
     vectorCount: stats.totalRecordCount || 0,

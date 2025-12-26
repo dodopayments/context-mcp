@@ -23,7 +23,6 @@ interface ChunkMetadata {
   language?: string;
   method?: string;
   path?: string;
-  breadcrumbs?: string[];
 }
 
 interface DocChunk {
@@ -32,7 +31,6 @@ interface DocChunk {
   documentTitle: string;
   category: string;
   heading: string;
-  headingLevel: number;
   content: string;
   metadata: ChunkMetadata;
 }
@@ -43,44 +41,50 @@ interface DocsIndex {
 }
 
 // =============================================================================
-// FORMAT FUNCTION (matches API server output)
+// FORMAT FUNCTION (matches Cloudflare worker output format)
 // =============================================================================
 
-function formatChunks(chunks: DocChunk[], separator: string = '-------------------------------------------------------------'): string {
+function formatChunks(chunks: DocChunk[]): string {
   const lines: string[] = [
-    '# Dodo Payments Documentation',
+    '# Documentation',
     `> Total chunks: ${chunks.length}`,
     '',
   ];
 
-  chunks.forEach((chunk, idx) => {
+  const separator = '-'.repeat(40);
+
+  chunks.forEach(chunk => {
     lines.push(separator);
-    lines.push(`## ${idx + 1}. ${chunk.documentTitle}`);
+    // Use documentTitle (matches result.title from worker's SearchResult)
+    lines.push(`## ${chunk.documentTitle}`);
     
-    if (chunk.metadata.sourceUrl) {
-      lines.push(`URL: ${chunk.metadata.sourceUrl}`);
+    // Show heading if it's different from documentTitle (provides section context)
+    if (chunk.heading && chunk.heading !== chunk.documentTitle) {
+      lines.push(`Heading: ${chunk.heading}`);
     }
     
+    // Source URL (matches result.url from worker)
+    if (chunk.metadata.sourceUrl) {
+      lines.push(`Source: ${chunk.metadata.sourceUrl}`);
+    }
+    
+    // API method and path (matches result.method and result.path from worker)
     if (chunk.metadata.method && chunk.metadata.path) {
       lines.push(`API: ${chunk.metadata.method} ${chunk.metadata.path}`);
     }
     
+    // Language (matches result.language from worker)
     if (chunk.metadata.language) {
       lines.push(`Language: ${chunk.metadata.language}`);
     }
     
-    if (chunk.heading && chunk.heading !== chunk.documentTitle) {
-      lines.push(`Section: ${chunk.heading}`);
-    }
-    
-    lines.push(`Category: ${chunk.category}`);
-    
-    if (chunk.metadata.tags && chunk.metadata.tags.length > 0) {
-      lines.push(`Tags: ${chunk.metadata.tags.join(', ')}`);
-    }
-    
+    // Empty line before content (matches worker format)
     lines.push('');
+    
+    // Content (matches result.content from worker)
     lines.push(chunk.content || '');
+    
+    // Empty line after content (matches worker format)
     lines.push('');
   });
 
@@ -93,10 +97,10 @@ function formatChunks(chunks: DocChunk[], separator: string = '-----------------
 
 async function main() {
   const dataDir = path.resolve(__dirname, '../data');
-  const indexPath = path.join(dataDir, 'docs-index.json');
-  const outputPath = path.join(dataDir, 'docs-full.txt');
+  const indexPath = path.join(dataDir, 'chunks-index.json');
+  const outputPath = path.join(dataDir, 'chunks-full.txt');
   
-  console.log('📖 Reading docs-index.json...');
+  console.log('📖 Reading chunks-index.json...');
   
   if (!fs.existsSync(indexPath)) {
     console.error(`❌ File not found: ${indexPath}`);
@@ -108,8 +112,8 @@ async function main() {
   
   console.log(`📊 Found ${indexData.chunks.length} chunks`);
   
-  // Format all chunks to text
-  const textContent = formatChunks(indexData.chunks, '-----------------------------------------------------------');
+  // Format all chunks to text (matches Cloudflare worker format)
+  const textContent = formatChunks(indexData.chunks);
   
   // Write to file
   fs.writeFileSync(outputPath, textContent, 'utf-8');

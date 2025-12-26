@@ -10,11 +10,14 @@
 import { Pinecone } from '@pinecone-database/pinecone';
 import 'dotenv/config';
 import { clearPineconeIndex, initPineconeIndex, getPineconeStats } from '../src/embeddings/core.js';
-import { PINECONE_INDEX_NAME } from '../src/config/index.js';
+import { loadConfig } from '../src/config/loader.js';
 
 async function main() {
   console.log('🗑️  Pinecone Vector Cleanup\n');
   console.log('═'.repeat(50));
+
+  // Load configuration
+  const config = loadConfig();
 
   // Validate environment
   if (!process.env.PINECONE_API_KEY) {
@@ -26,11 +29,19 @@ async function main() {
   const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
 
   // Ensure index exists
-  console.log(`\n📊 Index: ${PINECONE_INDEX_NAME}`);
-  await initPineconeIndex(pc);
+  const indexName = config.vectordb.indexName;
+  console.log(`\n📊 Index: ${indexName}`);
+  const pineconeConfig = config.vectordb.pinecone;
+  await initPineconeIndex(
+    pc,
+    indexName,
+    config.embeddings.dimensions,
+    pineconeConfig?.cloud || 'aws',
+    pineconeConfig?.region || 'us-east-1'
+  );
 
   // Get current stats
-  const beforeStats = await getPineconeStats(pc);
+  const beforeStats = await getPineconeStats(pc, indexName);
   console.log(`   Current vectors: ${beforeStats.vectorCount.toLocaleString()}`);
   console.log(`   Dimension: ${beforeStats.dimension}`);
 
@@ -45,13 +56,13 @@ async function main() {
 
   // Clear the index
   console.log('🔄 Clearing vectors...');
-  const result = await clearPineconeIndex(pc);
+  const result = await clearPineconeIndex(pc, indexName);
 
   if (result.success) {
     console.log(`\n✅ Successfully deleted ${result.vectorCount?.toLocaleString() || 0} vectors`);
     
     // Verify
-    const afterStats = await getPineconeStats(pc);
+    const afterStats = await getPineconeStats(pc, indexName);
     console.log(`   Remaining vectors: ${afterStats.vectorCount.toLocaleString()}`);
   } else {
     console.error('\n❌ Failed to clear vectors');

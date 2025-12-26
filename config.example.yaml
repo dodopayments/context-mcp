@@ -1,0 +1,123 @@
+# ContextMCP Configuration
+# Self-hosted MCP server for your documentation
+#
+# Copy this file to config.yaml and customize for your project.
+# See https://github.com/contextmcp/contextmcp for documentation.
+
+# =============================================================================
+# VECTOR DATABASE
+# =============================================================================
+vectordb:
+  provider: pinecone
+  # Index name in Pinecone (will be created if doesn't exist)
+  indexName: my-company-docs
+  pinecone:
+    cloud: aws
+    region: us-east-1
+
+# =============================================================================
+# EMBEDDINGS
+# =============================================================================
+embeddings:
+  provider: openai
+  model: text-embedding-3-large
+  dimensions: 3072
+
+# =============================================================================
+# DOCUMENTATION SOURCES
+# =============================================================================
+sources:
+  # ---------------------------------------------------------------------------
+  # Example 1: Main documentation site (MDX format)
+  # ---------------------------------------------------------------------------
+  # Use 'mdx' parser for documentation with JSX components like:
+  # - Mintlify (<Tab>, <Tabs>, <Callout>, <Card>)
+  # - Fumadocs (items={[...]}, <Callout>, <Cards>)
+  # - Docusaurus, Nextra, or any MDX-based docs
+  - name: docs
+    displayName: 'API Documentation'
+    type: github
+    repository: mycompany/documentation # Your GitHub repo (owner/repo)
+    branch: main
+    path: content/docs/ # Path to docs within repo
+    parser: mdx
+    baseUrl: https://docs.mycompany.com # Your docs site URL (for source links)
+    # Optional: OpenAPI spec for files with "openapi:" frontmatter
+    # When set, MDX files with frontmatter like "openapi: get /users" will
+    # have their content generated from the OpenAPI spec
+    openapiSpec: openapi/openapi.yaml
+    # Skip directories that shouldn't be indexed
+    skipDirs:
+      - node_modules
+      - .git
+      - images
+      - openapi  # Raw spec folder (loaded via openapiSpec)
+      - ar  # Arabic translation
+      - cn  # Chinese translation
+      - internal  # Internal docs
+      - test  # Test files
+    # Skip specific files
+    skipFiles:
+      - LICENSE
+      - styles.css
+
+  # ---------------------------------------------------------------------------
+  # Example 2: SDK/Library documentation (plain markdown)
+  # ---------------------------------------------------------------------------
+  # Use 'markdown' parser for plain .md files like:
+  # - README.md, CHANGELOG.md, MIGRATION.md
+  # - Any markdown without JSX components
+  - name: sdk-typescript
+    displayName: 'TypeScript SDK'
+    type: github
+    repository: mycompany/sdk-typescript
+    parser: markdown
+    language: typescript # Optional: adds language context
+
+  - name: sdk-python
+    displayName: 'Python SDK'
+    type: github
+    repository: mycompany/sdk-python
+    parser: markdown
+    language: python
+
+  # ---------------------------------------------------------------------------
+  # Example 3: OpenAPI specification
+  # ---------------------------------------------------------------------------
+  # Use 'openapi' parser for OpenAPI/Swagger specs (YAML or JSON)
+  - name: api-spec
+    displayName: 'REST API Reference'
+    type: url
+    url: https://api.mycompany.com/openapi.yaml
+    parser: openapi
+
+  # ---------------------------------------------------------------------------
+  # Example 4: Local documentation (for development)
+  # ---------------------------------------------------------------------------
+  # Use 'local' type for files on your filesystem
+  # - name: local-docs
+  #   displayName: "Local Documentation"
+  #   type: local
+  #   localPath: ./docs/
+  #   parser: markdown
+  #   optional: true    # Don't fail if path doesn't exist
+
+# =============================================================================
+# REINDEXING SETTINGS
+# =============================================================================
+reindex:
+  # Clear all vectors before reindexing (recommended for consistency)
+  clearBeforeReindex: true
+  # Batch size for embedding generation (higher = faster but more memory)
+  batchSize: 100
+
+# =============================================================================
+# CHUNKING SETTINGS
+# =============================================================================
+chunking:
+  # Maximum characters per chunk (default: 2000)
+  maxChunkSize: 2000
+  # Minimum characters for a standalone chunk (default: 250)
+  minChunkSize: 250
+  # Target size for merging small sections (default: 1000)
+  idealChunkSize: 1000

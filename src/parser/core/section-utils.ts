@@ -252,12 +252,13 @@ export function mergeSections(
   sections: Section[], 
   config: ChunkConfig = DEFAULT_CHUNK_CONFIG
 ): Section[] {
+  const chunkConfig = config;
   const merged: Section[] = [];
   let batch: Section[] = [];
   let batchSize = 0;
   
   for (const section of sections) {
-    if (section.content.length >= config.minChunkSize) {
+    if (section.content.length >= chunkConfig.minChunkSize) {
       // Flush batch first
       if (batch.length > 0) {
         merged.push(mergeBatch(batch));
@@ -265,7 +266,7 @@ export function mergeSections(
         batchSize = 0;
       }
       merged.push(section);
-    } else if (batchSize + section.content.length <= config.idealChunkSize) {
+    } else if (batchSize + section.content.length <= chunkConfig.idealChunkSize) {
       batch.push(section);
       batchSize += section.content.length;
     } else {
@@ -327,7 +328,8 @@ export function splitLargeSection(
   section: Section, 
   config: ChunkConfig = DEFAULT_CHUNK_CONFIG
 ): Section[] {
-  if (section.content.length <= config.maxChunkSize) {
+  const chunkConfig = config;
+  if (section.content.length <= chunkConfig.maxChunkSize) {
     return [section];
   }
   
@@ -335,7 +337,7 @@ export function splitLargeSection(
   const content = section.content;
   
   // Try to split by ### subheadings first
-  const subheadingChunks = splitBySubheadings(content, config.maxChunkSize);
+  const subheadingChunks = splitBySubheadings(content, chunkConfig.maxChunkSize);
   
   if (subheadingChunks.length > 1) {
     for (const chunk of subheadingChunks) {
@@ -355,10 +357,10 @@ export function splitLargeSection(
   let chunkIndex = 0;
   
   for (const part of parts) {
-    if (currentChunk.length + part.length <= config.maxChunkSize) {
+    if (currentChunk.length + part.length <= chunkConfig.maxChunkSize) {
       currentChunk += part;
     } else {
-      if (currentChunk.trim().length >= config.minChunkSize) {
+      if (currentChunk.trim().length >= chunkConfig.minChunkSize) {
         const chunkSubheading = extractFirstSubheading(currentChunk);
         result.push({
           heading: chunkSubheading 
@@ -376,7 +378,7 @@ export function splitLargeSection(
   }
   
   // Save final chunk
-  if (currentChunk.trim().length >= config.minChunkSize / 2) {
+  if (currentChunk.trim().length >= chunkConfig.minChunkSize / 2) {
     const chunkSubheading = extractFirstSubheading(currentChunk);
     result.push({
       heading: chunkSubheading 
@@ -476,6 +478,7 @@ export function mergeHierarchicalSections(
   sections: Section[],
   config: ChunkConfig = DEFAULT_CHUNK_CONFIG
 ): FlatSection[] {
+  const chunkConfig = config;
   const result: FlatSection[] = [];
   
   function processSection(section: Section, breadcrumbs: string[]): void {
@@ -483,7 +486,7 @@ export function mergeHierarchicalSections(
     const selfSize = section.content.length;
     
     // Case 1: Section alone is large enough
-    if (selfSize >= config.minChunkSize && (!section.children || section.children.length === 0)) {
+    if (selfSize >= chunkConfig.minChunkSize && (!section.children || section.children.length === 0)) {
       result.push({
         heading: section.heading,
         level: section.level,
@@ -494,7 +497,7 @@ export function mergeHierarchicalSections(
     }
     
     // Case 2: Section with children fits in one chunk
-    if (totalSize <= config.maxChunkSize && totalSize >= config.minChunkSize) {
+    if (totalSize <= chunkConfig.maxChunkSize && totalSize >= chunkConfig.minChunkSize) {
       result.push({
         heading: section.heading,
         level: section.level,
@@ -505,8 +508,8 @@ export function mergeHierarchicalSections(
     }
     
     // Case 3: Too large - process children separately
-    if (totalSize > config.maxChunkSize) {
-      if (selfSize >= config.minChunkSize / 2) {
+    if (totalSize > chunkConfig.maxChunkSize) {
+      if (selfSize >= chunkConfig.minChunkSize / 2) {
         result.push({
           heading: section.heading,
           level: section.level,
@@ -526,19 +529,19 @@ export function mergeHierarchicalSections(
       for (const child of section.children || []) {
         const childSize = getSectionSize(child);
         
-        if (childSize >= config.minChunkSize) {
+        if (childSize >= chunkConfig.minChunkSize) {
           if (batch.length > 0) {
-            flushBatch(batch, newBreadcrumbs, config, result);
+            flushBatch(batch, newBreadcrumbs, chunkConfig, result);
             batch = [];
             batchSize = 0;
           }
           processSection(child, newBreadcrumbs);
-        } else if (batchSize + childSize <= config.idealChunkSize) {
+        } else if (batchSize + childSize <= chunkConfig.idealChunkSize) {
           batch.push(child);
           batchSize += childSize;
         } else {
           if (batch.length > 0) {
-            flushBatch(batch, newBreadcrumbs, config, result);
+            flushBatch(batch, newBreadcrumbs, chunkConfig, result);
           }
           batch = [child];
           batchSize = childSize;
@@ -546,7 +549,7 @@ export function mergeHierarchicalSections(
       }
       
       if (batch.length > 0) {
-        flushBatch(batch, newBreadcrumbs, config, result);
+        flushBatch(batch, newBreadcrumbs, chunkConfig, result);
       }
       return;
     }

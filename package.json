@@ -1,34 +1,39 @@
 {
-  "name": "dodo-knowledge-mcp",
+  "name": "contextmcp",
   "version": "1.0.0",
   "type": "module",
-  "description": "Documentation indexer for Dodo Payments knowledge base",
+  "description": "Self-hosted MCP server for your documentation",
   "scripts": {
-    "parse:docs": "tsx src/parser/parse-docs.ts",
-    "parse:sdk": "tsx src/parser/parse-sdk.ts",
-    "parse:billingsdk": "tsx src/parser/parse-billingsdk.ts",
-    "embed:docs": "tsx src/embeddings/embed.ts docs",
-    "embed:sdk": "tsx src/embeddings/embed.ts sdk",
-    "embed:billingsdk": "tsx src/embeddings/embed.ts billingsdk",
-    "clean:vectors": "tsx scripts/clean-vectors.ts",
-    "reindex": "tsx scripts/reindex.ts"
+    "reindex": "tsx scripts/reindex.ts",
+    "reindex:dry": "tsx scripts/reindex.ts --dry-run",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean:vectors": "tsx scripts/clean-vectors.ts"
   },
   "keywords": [
     "mcp",
-    "dodo-payments",
-    "documentation"
+    "documentation",
+    "semantic-search",
+    "pinecone",
+    "embeddings",
+    "cloudflare-workers"
   ],
-  "author": "Dodo Payments",
   "dependencies": {
     "@pinecone-database/pinecone": "^6.1.3",
     "dotenv": "^17.2.3",
     "gray-matter": "^4.0.3",
     "openai": "^6.9.1",
-    "yaml": "^2.8.1"
+    "yaml": "^2.8.2",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "prettier": "^3.4.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

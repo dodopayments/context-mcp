@@ -4,14 +4,14 @@
  * Parses OpenAPI/Swagger specs and generates documentation chunks for:
  * - API endpoints with full request/response documentation
  * - Code samples in various languages
- * - Smart example generation based on Dodo Payments domain
+ * - Smart example generation based on schema definitions
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { parse as parseYaml } from 'yaml';
-import { DocChunk } from '../../types/index.js';
-import { DOCS_BASE_URL } from '../core/index.js';
+import { DocChunk, ChunkConfig } from '../../types/index.js';
+import { DEFAULT_CHUNK_CONFIG } from '../core/config.js';
 
 // URL lookup map: "METHOD /path" -> documentation URL (built from MDX frontmatter)
 let docUrlMap: Map<string, string> = new Map();
@@ -429,9 +429,8 @@ function formatParameter(p: Parameter): string {
   return line;
 }
 
-// =============================================================================
-// URL MAPPING (Docs-first approach using MDX frontmatter)
-// =============================================================================
+// Current base URL for URL generation (set by parseOpenApiSpec)
+let currentBaseUrl: string | null = null;
 
 /**
  * Build a URL lookup map by reading the `openapi:` frontmatter from MDX files.
@@ -439,17 +438,22 @@ function formatParameter(p: Parameter): string {
  * Each MDX file contains frontmatter like:
  *   openapi: get /payments
  * 
- * We build a map: "GET /payments" -> "https://docs.../api-reference/payments/get-payments"
+ * We build a map: "GET /payments" -> baseUrl + "/" + file-path-slug
  * This ensures URLs are always correct since we use file paths as the source of truth.
+ * 
+ * @param docsRoot - Root directory containing the documentation
+ * @param urlMappingDir - Directory name containing MDX files with openapi frontmatter (e.g., "api-reference")
+ * @param baseUrl - Base URL for the documentation (e.g., "https://docs.example.com/api-reference")
  */
-function buildDocUrlMap(docsRoot: string): void {
-  const apiRefDir = path.join(docsRoot, 'api-reference');
+function buildDocUrlMap(docsRoot: string, urlMappingDir: string, baseUrl: string): void {
+  const mappingDir = path.join(docsRoot, urlMappingDir);
   
-  if (!fs.existsSync(apiRefDir)) {
-    console.log('  ⚠️ No api-reference directory found, using fallback URL generation');
+  if (!fs.existsSync(mappingDir)) {
     return;
   }
   
+  // Store the base URL for getDocUrl to use
+  currentBaseUrl = baseUrl;
   docUrlMap.clear();
   
   // Recursively find all MDX files and extract their openapi reference
@@ -477,8 +481,9 @@ function buildDocUrlMap(docsRoot: string): void {
             const apiPath = openapiMatch[2].trim().replace(/"$/, '');
             
             // Build the documentation URL from file path
+            // baseUrl already contains the full prefix (e.g., https://docs.x.com/api-reference)
             const slug = relPath.replace(/\.mdx$/, '');
-            const docUrl = `${DOCS_BASE_URL}/api-reference/${slug}`;
+            const docUrl = `${baseUrl}/${slug}`;
             
             // Create lookup key: "METHOD /path" (e.g., "GET /payments")
             const lookupKey = `${method} ${apiPath}`;
@@ -491,8 +496,7 @@ function buildDocUrlMap(docsRoot: string): void {
     }
   }
   
-  scanDir(apiRefDir);
-  console.log(`  📂 Built URL map with ${docUrlMap.size} entries from api-reference MDX files`);
+  scanDir(mappingDir);
 }
 
 /**
@@ -509,7 +513,10 @@ function getDocUrl(operationId: string, method: string, pathStr: string): string
   }
   
   // Fallback: Generate URL based on operationId
-  // This means no MDX file exists for this endpoint
+  if (!currentBaseUrl) {
+    throw new Error('baseUrl is required for OpenAPI parsing. Set baseUrl in your source configuration.');
+  }
+  
   const pathParts = pathStr.split('/').filter(Boolean);
   const resource = pathParts[0] || 'misc';
   const slug = operationId
@@ -517,8 +524,8 @@ function getDocUrl(operationId: string, method: string, pathStr: string): string
     .replace(/_proxy$/, '')
     .replace(/_/g, '-');
   
-  console.warn(`⚠️ No MDX docs for: ${method.toUpperCase()} ${pathStr} (using fallback URL)`);
-  return `${DOCS_BASE_URL}/api-reference/${resource}/${slug}`;
+  // Use currentBaseUrl for fallback URL generation
+  return `${currentBaseUrl}/${resource}/${slug}`;
 }
 
 // =============================================================================
@@ -648,14 +655,12 @@ function createApiDocChunk(
     documentTitle: `${actionName} - ${method.toUpperCase()} ${pathStr}`,
     category: 'api-reference',
     heading: actionName,
-    headingLevel: 2,
     content,
     metadata: {
       description: operation.summary || operation.description,
       sourceUrl: docUrl,
       method: method.toUpperCase(),
       path: pathStr,
-      operationId,
     },
   };
 }
@@ -681,8 +686,6 @@ function createCodeSampleChunk(
   const title = `${actionName} - ${sample.lang} Example`;
   
   const lines: string[] = [];
-  lines.push(`# ${title}`);
-  lines.push('');
   lines.push(`${sample.lang} code example for \`${method.toUpperCase()} ${pathStr}\``);
   lines.push('');
   lines.push('```' + sample.lang.toLowerCase());
@@ -697,7 +700,6 @@ function createCodeSampleChunk(
     documentTitle: title,
     category: 'api-reference',
     heading: `${sample.lang} Example`,
-    headingLevel: 3,
     content,
     metadata: {
       description: `${sample.lang} code example for ${actionName}`,
@@ -705,7 +707,6 @@ function createCodeSampleChunk(
       language: sample.lang,
       method: method.toUpperCase(),
       path: pathStr,
-      operationId,
     },
   };
 }
@@ -717,14 +718,27 @@ function createCodeSampleChunk(
 /**
  * Parse the OpenAPI spec and generate chunks
  * @param openApiPath - Path to the OpenAPI YAML file
+ * @param baseUrl - Required base URL for documentation links (from source config)
  * @param docsRoot - Optional path to the docs root for URL mapping
+ * @param urlMappingDir - Optional directory name containing MDX files with openapi frontmatter
  */
-export function parseOpenApiSpec(openApiPath: string, docsRoot?: string): DocChunk[] {
-  console.log(`\n📖 Parsing OpenAPI spec: ${openApiPath}\n`);
+export function parseOpenApiSpec(
+  openApiPath: string, 
+  baseUrl: string, 
+  docsRoot?: string, 
+  urlMappingDir?: string,
+  chunkConfig: ChunkConfig = DEFAULT_CHUNK_CONFIG
+): DocChunk[] {
+  if (!baseUrl) {
+    throw new Error('baseUrl is required for OpenAPI parsing. Set baseUrl in your source configuration.');
+  }
   
-  // Build URL map from actual folder structure if docsRoot provided
-  if (docsRoot) {
-    buildDocUrlMap(docsRoot);
+  // Set the base URL for fallback URL generation
+  currentBaseUrl = baseUrl;
+  
+  // Build URL map from actual folder structure if both docsRoot and urlMappingDir provided
+  if (docsRoot && urlMappingDir) {
+    buildDocUrlMap(docsRoot, urlMappingDir, baseUrl);
   }
   
   const content = fs.readFileSync(openApiPath, 'utf-8');
@@ -765,22 +779,68 @@ export function parseOpenApiSpec(openApiPath: string, docsRoot?: string): DocChu
       }
     }
   }
-  
-  console.log(`✅ Parsed ${endpointCount} API endpoints`);
-  console.log(`✅ Created ${codeSampleCount} code sample chunks`);
-  console.log(`✅ Total API chunks: ${chunks.length}\n`);
-  
+
   return chunks;
 }
 
+// =============================================================================
+// OPENAPI SPEC LOADER (for MDX parser integration)
+// =============================================================================
+
 /**
- * Get OpenAPI version info
+ * Cached OpenAPI spec loader for efficient lookups
  */
-export function getOpenApiInfo(openApiPath: string): { version: string; title: string } {
-  const content = fs.readFileSync(openApiPath, 'utf-8');
-  const spec: OpenAPISpec = parseYaml(content);
-  return {
-    version: spec.info.version,
-    title: spec.info.title,
-  };
+export class OpenAPISpecLoader {
+  private spec: OpenAPISpec | null = null;
+  private specPath: string;
+
+  constructor(specPath: string) {
+    this.specPath = specPath;
+  }
+
+  /**
+   * Load the spec (cached after first load)
+   */
+  load(): OpenAPISpec {
+    if (!this.spec) {
+      const content = fs.readFileSync(this.specPath, 'utf-8');
+      this.spec = parseYaml(content);
+    }
+    return this.spec!;
+  }
+
+  /**
+   * Look up an endpoint and generate content using the exact same logic as createApiDocChunk
+   * @param method - HTTP method (get, post, etc.)
+   * @param apiPath - API path (e.g., /payments, /payments/{id})
+   * @returns Generated content string or null if not found
+   */
+  lookupEndpoint(method: string, apiPath: string): string | null {
+    const spec = this.load();
+    const methodLower = method.toLowerCase() as keyof PathItem;
+    
+    // Find the path item
+    let pathItem = spec.paths[apiPath];
+    if (!pathItem) {
+      // Try with/without trailing slash
+      const altPath = apiPath.endsWith('/') ? apiPath.slice(0, -1) : apiPath + '/';
+      pathItem = spec.paths[altPath];
+      if (!pathItem) {
+        return null;
+      }
+    }
+    
+    const operation = pathItem[methodLower];
+    if (!operation) {
+      return null;
+    }
+
+    const schemas = spec.components?.schemas || {};
+    const servers = spec.servers || [];
+
+    // Use the EXACT same function that creates chunks for standalone OpenAPI parsing
+    const chunk = createApiDocChunk(method, apiPath, operation, schemas, servers);
+    return chunk.content;
+  }
 }
+

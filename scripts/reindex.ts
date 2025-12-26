@@ -1,299 +1,319 @@
+#!/usr/bin/env npx tsx
 /**
- * Daily Documentation Reindex Script
+ * ContextMCP Unified Reindex Script
  *
- * Orchestrates full reindexing of all documentation sources:
- * 1. Clears existing vectors from Pinecone (removes stale data)
- * 2. Parses docs from all repositories (docs, sdk, billingsdk)
- * 3. Generates embeddings for all chunks
- * 4. Upserts vectors to Pinecone
+ * Config-driven reindexing of all documentation sources.
+ * Reads from config.yaml, fetches sources, parses, embeds, and uploads.
  *
- * Usage: npm run reindex
+ * Usage:
+ *   npx tsx scripts/reindex.ts                    # Full reindex
+ *   npx tsx scripts/reindex.ts --source docs      # Single source
+ *   npx tsx scripts/reindex.ts --dry-run          # Parse only, no upload
+ *   npx tsx scripts/reindex.ts --config path.yaml # Use custom config
  */
 
+import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { Pinecone } from '@pinecone-database/pinecone';
-import 'dotenv/config';
-import { clearPineconeIndex, initPineconeIndex } from '../src/embeddings/core.js';
+import OpenAI from 'openai';
 
-const execAsync = promisify(exec);
+import { loadConfig } from '../src/config/loader.js';
+import { fetchSource, cleanupSources } from '../src/sources/index.js';
+import type { FetchedSource } from '../src/sources/index.js';
+import { parseSource } from '../src/parser/index.js';
+import type { DocChunk } from '../src/types/index.js';
+import {
+  initPineconeIndex,
+  clearPineconeIndex,
+  generateEmbeddings,
+  chunkToRecord,
+  prepareChunkForEmbedding,
+  sleep,
+} from '../src/embeddings/core.js';
+import {
+  validateEmbeddingEnv,
+  DEFAULT_BATCH_SIZE,
+  DELAY_BETWEEN_BATCHES,
+} from '../src/config/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, '../data');
+// =============================================================================
+// CLI ARGUMENTS
+// =============================================================================
 
-interface ReindexStats {
-  startTime: string;
-  endTime?: string;
-  duration?: number;
-  cleanup: {
-    vectorsDeleted: number;
-    duration: number;
-    success: boolean;
-  };
-  sources: Array<{
-    name: string;
-    parseTime: number;
-    embedTime: number;
-    totalChunks: number;
-    success: boolean;
-    error?: string;
-  }>;
-  totalChunks: number;
-  totalErrors: number;
+interface CliArgs {
+  source?: string;
+  config?: string;
+  dryRun: boolean;
+  help: boolean;
 }
 
-async function main() {
-  console.log('🚀 Starting daily documentation reindex...\n');
-  console.log('═'.repeat(60));
-
-  const stats: ReindexStats = {
-    startTime: new Date().toISOString(),
-    cleanup: {
-      vectorsDeleted: 0,
-      duration: 0,
-      success: false,
-    },
-    sources: [],
-    totalChunks: 0,
-    totalErrors: 0,
+function parseArgs(): CliArgs {
+  const args: CliArgs = {
+    dryRun: false,
+    help: false,
   };
 
-  const globalStartTime = Date.now();
+  for (let i = 2; i < process.argv.length; i++) {
+    const arg = process.argv[i];
 
-  try {
-    // ================================================================
-    // STEP 0: CLEAR EXISTING VECTORS
-    // ================================================================
-    console.log('\n🗑️  CLEARING EXISTING VECTORS');
-    console.log('═'.repeat(60));
-    
-    if (!process.env.PINECONE_API_KEY) {
-      console.error('❌ PINECONE_API_KEY not set');
-      process.exit(1);
+    if (arg === '--help' || arg === '-h') {
+      args.help = true;
+    } else if (arg === '--dry-run') {
+      args.dryRun = true;
+    } else if (arg === '--source' || arg === '-s') {
+      args.source = process.argv[++i];
+    } else if (arg === '--config' || arg === '-c') {
+      args.config = process.argv[++i];
     }
-    
-    const cleanupStart = Date.now();
-    const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-    
-    // Ensure index exists
-    await initPineconeIndex(pc);
-    
-    // Clear all vectors
-    const clearResult = await clearPineconeIndex(pc);
-    stats.cleanup.duration = (Date.now() - cleanupStart) / 1000;
-    stats.cleanup.success = clearResult.success;
-    stats.cleanup.vectorsDeleted = clearResult.vectorCount || 0;
-    
-    if (clearResult.success) {
-      console.log(`   ✅ Cleared ${stats.cleanup.vectorsDeleted.toLocaleString()} vectors in ${stats.cleanup.duration.toFixed(2)}s`);
-    } else {
-      console.error('   ❌ Failed to clear index');
-      stats.totalErrors++;
-    }
-
-    // Define all documentation sources
-    const sources = [
-      {
-        name: 'docs',
-        script: 'parse:docs',
-        embedScript: 'embed:docs',
-        displayName: 'Main Documentation',
-      },
-      {
-        name: 'sdk',
-        script: 'parse:sdk',
-        embedScript: 'embed:sdk',
-        displayName: 'SDK Documentation',
-      },
-      {
-        name: 'billingsdk',
-        script: 'parse:billingsdk',
-        embedScript: 'embed:billingsdk',
-        displayName: 'BillingSDK Documentation',
-      },
-    ];
-
-    for (const source of sources) {
-      console.log(`\n${'═'.repeat(60)}`);
-      console.log(`📚 ${source.displayName.toUpperCase()}`);
-      console.log('═'.repeat(60));
-
-      const sourceStats = {
-        name: source.name,
-        parseTime: 0,
-        embedTime: 0,
-        totalChunks: 0,
-        success: false,
-        error: undefined as string | undefined,
-      };
-
-      try {
-        // ============================================================
-        // STEP 1: PARSE DOCUMENTATION
-        // ============================================================
-        console.log(`\n🔍 STEP 1: Parsing documents...`);
-        const parseStart = Date.now();
-
-        const { stdout: parseOutput } = await execAsync(`npm run ${source.script}`, {
-          cwd: path.join(__dirname, '..'),
-          env: { ...process.env },
-        });
-
-        sourceStats.parseTime = (Date.now() - parseStart) / 1000;
-
-        // Extract chunk count from parse output
-        const chunkMatch =
-          parseOutput.match(/Created (\d+) total chunks/i) ||
-          parseOutput.match(/✅ (\d+) chunks/i) ||
-          parseOutput.match(/(\d+) chunks/i);
-
-        const parsedChunks = chunkMatch ? parseInt(chunkMatch[1]) : 0;
-
-        console.log(`   ✅ Parsed in ${sourceStats.parseTime.toFixed(2)}s`);
-        if (parsedChunks > 0) {
-          console.log(`   📄 Created ${parsedChunks} chunks`);
-        }
-
-        // Read index file for accurate chunk count
-        const indexPath = path.join(DATA_DIR, `${source.name}-index.json`);
-        if (fs.existsSync(indexPath)) {
-          const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-          sourceStats.totalChunks = index.totalChunks || index.chunks?.length || 0;
-
-          if (sourceStats.totalChunks !== parsedChunks) {
-            console.log(`   📊 Verified: ${sourceStats.totalChunks} chunks in index`);
-          }
-        }
-
-        // ============================================================
-        // STEP 2: GENERATE EMBEDDINGS & UPLOAD
-        // ============================================================
-        console.log(`\n🧠 STEP 2: Generating embeddings & uploading to Pinecone...`);
-        const embedStart = Date.now();
-
-        const { stdout: embedOutput } = await execAsync(`npm run ${source.embedScript}`, {
-          cwd: path.join(__dirname, '..'),
-          env: { ...process.env },
-        });
-
-        sourceStats.embedTime = (Date.now() - embedStart) / 1000;
-
-        // Extract progress from embed output
-        const batchMatches = embedOutput.matchAll(/Batch (\d+)\/(\d+).*?(\d+)\/(\d+)/g);
-        let lastProcessed = 0;
-        let lastTotal = 0;
-
-        for (const match of batchMatches) {
-          lastProcessed = parseInt(match[3]);
-          lastTotal = parseInt(match[4]);
-        }
-
-        console.log(`   ✅ Generated embeddings in ${sourceStats.embedTime.toFixed(2)}s`);
-        if (lastProcessed > 0) {
-          console.log(`   📤 Uploaded ${lastProcessed}/${lastTotal} vectors to Pinecone`);
-        }
-
-        // ============================================================
-        // STEP 3: SUMMARY
-        // ============================================================
-        const totalTime = sourceStats.parseTime + sourceStats.embedTime;
-        console.log(
-          `\n   ⏱️  Total: ${totalTime.toFixed(2)}s (Parse: ${sourceStats.parseTime.toFixed(
-            1
-          )}s + Embed: ${sourceStats.embedTime.toFixed(1)}s)`
-        );
-        console.log(`   � Chunks: ${sourceStats.totalChunks}`);
-
-        sourceStats.success = true;
-        stats.totalChunks += sourceStats.totalChunks;
-      } catch (error) {
-        sourceStats.success = false;
-        sourceStats.error = error instanceof Error ? error.message : String(error);
-        stats.totalErrors++;
-        console.error(`\n   ❌ Error processing ${source.name}:`);
-        console.error(`   ${sourceStats.error}`);
-      }
-
-      stats.sources.push(sourceStats);
-    }
-
-    // ================================================================
-    // FINAL SUMMARY
-    // ================================================================
-    const totalDuration = (Date.now() - globalStartTime) / 1000;
-    stats.endTime = new Date().toISOString();
-    stats.duration = totalDuration;
-
-    console.log('\n' + '═'.repeat(60));
-    console.log('🎉 REINDEX COMPLETE');
-    console.log('═'.repeat(60));
-
-    const minutes = Math.floor(totalDuration / 60);
-    const seconds = totalDuration % 60;
-    const timeStr =
-      minutes > 0 ? `${minutes}m ${seconds.toFixed(0)}s` : `${totalDuration.toFixed(2)}s`;
-
-    console.log(`\n⏱️  Total Duration: ${timeStr}`);
-    console.log(`🗑️  Vectors Cleared: ${stats.cleanup.vectorsDeleted.toLocaleString()}`);
-    console.log(`📦 Total Chunks: ${stats.totalChunks.toLocaleString()}`);
-    console.log(
-      `🎯 Success Rate: ${stats.sources.filter(s => s.success).length}/${stats.sources.length}`
-    );
-    console.log(`${stats.totalErrors === 0 ? '✅' : '⚠️ '} Errors: ${stats.totalErrors}`);
-
-    // Detailed breakdown table
-    console.log('\n📊 DETAILED BREAKDOWN:');
-    console.log('─'.repeat(60));
-    console.log('Source          │ Chunks │  Parse │  Embed │  Total │ Status');
-    console.log('─'.repeat(60));
-
-    for (const source of stats.sources) {
-      const status = source.success ? '✅' : '❌';
-      const name = source.name.padEnd(15);
-      const chunks = source.totalChunks.toString().padStart(6);
-      const parse = `${source.parseTime.toFixed(1)}s`.padStart(6);
-      const embed = `${source.embedTime.toFixed(1)}s`.padStart(6);
-      const total = `${(source.parseTime + source.embedTime).toFixed(1)}s`.padStart(6);
-
-      console.log(`${name} │ ${chunks} │ ${parse} │ ${embed} │ ${total} │ ${status}`);
-
-      if (source.error) {
-        console.log(`${' '.repeat(15)} └─ Error: ${source.error}`);
-      }
-    }
-    console.log('─'.repeat(60));
-
-    // Save report
-    const reportPath = path.join(__dirname, '..', 'reindex-report.json');
-    fs.writeFileSync(reportPath, JSON.stringify(stats, null, 2));
-    console.log(`💾 Report saved: reindex-report.json`);
-
-    console.log('\n' + '═'.repeat(60));
-    if (stats.totalErrors === 0) {
-      console.log('✅ All sources processed successfully!');
-    } else {
-      console.log(`⚠️  Completed with ${stats.totalErrors} error(s)`);
-    }
-    console.log('═'.repeat(60) + '\n');
-
-    // Exit with error if any source failed
-    if (stats.totalErrors > 0) {
-      process.exit(1);
-    }
-  } catch (error) {
-    console.error('\n❌ Fatal error during reindex:', error);
-    stats.endTime = new Date().toISOString();
-
-    // Save error report
-    const reportPath = path.join(__dirname, '..', 'reindex-report.json');
-    fs.writeFileSync(reportPath, JSON.stringify(stats, null, 2));
-
-    process.exit(1);
   }
+
+  return args;
 }
 
-main();
+function printHelp(): void {
+  console.log(`
+ContextMCP Reindex Script
+
+Usage:
+  npx tsx scripts/reindex.ts [options]
+
+Options:
+  --help, -h             Show this help message
+  --source, -s <name>    Reindex only the specified source (by name)
+  --config, -c <path>    Use a custom config file path
+  --dry-run              Parse only, don't upload to Pinecone
+
+Examples:
+  npx tsx scripts/reindex.ts                              # Full reindex
+  npx tsx scripts/reindex.ts --source docs                # Reindex only 'docs' source
+  npx tsx scripts/reindex.ts --dry-run                    # Test parsing without uploading
+  npx tsx scripts/reindex.ts --config test.config.yaml # Use custom config
+`);
+}
+
+
+// =============================================================================
+// EMBEDDING & UPLOAD
+// =============================================================================
+
+async function embedAndUpload(
+  chunks: DocChunk[],
+  pinecone: Pinecone,
+  openai: OpenAI,
+  indexName: string,
+  batchSize: number
+): Promise<void> {
+  const index = pinecone.index(indexName);
+  const total = chunks.length;
+  let uploaded = 0;
+
+  console.log(`   Processing ${total} chunks in batches of ${batchSize}...`);
+
+  for (let i = 0; i < total; i += batchSize) {
+    const batch = chunks.slice(i, i + batchSize);
+
+    // Prepare texts for embedding
+    const texts = batch.map(chunk => prepareChunkForEmbedding(chunk));
+
+    // Generate embeddings
+    const embeddings = await generateEmbeddings(openai, texts);
+
+    // Convert to Pinecone records
+    const records = batch.map((chunk, idx) => chunkToRecord(chunk, embeddings[idx]));
+
+    // Upsert to Pinecone
+    await index.upsert(records);
+
+    uploaded += batch.length;
+    const percent = Math.round((uploaded / total) * 100);
+    process.stdout.write(`\r   Progress: ${uploaded}/${total} (${percent}%)`);
+
+    // Delay between batches to avoid rate limits
+    if (i + batchSize < total) {
+      await sleep(DELAY_BETWEEN_BATCHES);
+    }
+  }
+
+  console.log('\n   ✅ Upload complete');
+}
+
+// =============================================================================
+// MAIN REINDEX FUNCTION
+// =============================================================================
+
+async function reindex(): Promise<void> {
+  const args = parseArgs();
+
+  if (args.help) {
+    printHelp();
+    process.exit(0);
+  }
+
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('   ContextMCP - Documentation Reindexer');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('');
+
+  // Load configuration
+  const config = loadConfig(args.config);
+
+  // Get chunking configuration (or use defaults)
+  const { getChunkConfigFromConfig } = await import('../src/parser/core/config.js');
+  const chunkConfig = getChunkConfigFromConfig(config);
+
+  // Validate environment (unless dry run)
+  if (!args.dryRun) {
+    validateEmbeddingEnv();
+  }
+
+  // Filter sources if --source flag is provided
+  let sources = config.sources;
+  if (args.source) {
+    sources = sources.filter(s => s.name === args.source);
+    if (sources.length === 0) {
+      console.error(`❌ Source '${args.source}' not found in configuration`);
+      console.error(`   Available sources: ${config.sources.map(s => s.name).join(', ')}`);
+      process.exit(1);
+    }
+  }
+
+  console.log(`📚 Sources to process: ${sources.map(s => s.name).join(', ')}`);
+  console.log(`🔧 Mode: ${args.dryRun ? 'DRY RUN (parse only)' : 'FULL REINDEX'}`);
+  console.log('');
+
+  // Initialize clients (unless dry run)
+  let pinecone: Pinecone | undefined;
+  let openai: OpenAI | undefined;
+
+  if (!args.dryRun) {
+    pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
+    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+    // Initialize and optionally clear Pinecone
+    const pineconeConfig = config.vectordb.pinecone;
+    await initPineconeIndex(
+      pinecone,
+      config.vectordb.indexName,
+      config.embeddings.dimensions,
+      pineconeConfig?.cloud || 'aws',
+      pineconeConfig?.region || 'us-east-1'
+    );
+
+    if (config.reindex.clearBeforeReindex) {
+      console.log('🗑️  Clearing existing vectors...');
+      await clearPineconeIndex(pinecone, config.vectordb.indexName);
+      console.log('');
+    }
+  }
+
+  // Process each source
+  const fetchedSources: FetchedSource[] = [];
+  const allChunks: DocChunk[] = [];
+
+  for (const source of sources) {
+    console.log(`\n📦 Processing source: ${source.displayName || source.name}`);
+    console.log(`   Type: ${source.type}, Parser: ${source.parser}`);
+
+    try {
+      // Fetch source
+      const fetched = await fetchSource(source);
+
+      if (!fetched) {
+        console.log(`   ⏭️  Skipped (optional source not found)`);
+        continue;
+      }
+
+      fetchedSources.push(fetched);
+
+      // Parse source
+      const chunks = await parseSource(source, fetched, chunkConfig);
+      allChunks.push(...chunks);
+
+      console.log(`   📊 ${chunks.length} chunks created`);
+    } catch (error) {
+      console.error(`   ❌ Error: ${error}`);
+      if (!source.optional) {
+        throw error;
+      }
+    }
+  }
+
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`📊 Total chunks: ${allChunks.length}`);
+  console.log('═══════════════════════════════════════════════════════════════');
+
+  // Save chunks to data/ directory for inspection
+  if (allChunks.length > 0) {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    const outputFile = path.join(dataDir, 'chunks-index.json');
+    const output = {
+      generatedAt: new Date().toISOString(),
+      totalChunks: allChunks.length,
+      sources: sources.map(s => s.name),
+      categories: [...new Set(allChunks.map(c => c.category))].sort(),
+      dryRun: args.dryRun,
+      chunks: allChunks,
+    };
+
+    fs.writeFileSync(outputFile, JSON.stringify(output, null, 2));
+    console.log(`\n💾 Saved chunks to: ${outputFile}`);
+  }
+
+  // Upload if not dry run
+  if (!args.dryRun && allChunks.length > 0 && pinecone && openai) {
+    console.log('');
+    console.log('🔄 Generating embeddings and uploading...');
+
+    await embedAndUpload(
+      allChunks,
+      pinecone,
+      openai,
+      config.vectordb.indexName,
+      config.reindex.batchSize || DEFAULT_BATCH_SIZE
+    );
+  } else if (args.dryRun) {
+    console.log('');
+    console.log('ℹ️  Dry run - skipping upload');
+
+    // Show sample chunks in dry run
+    if (allChunks.length > 0) {
+      console.log('');
+      console.log('Sample chunks:');
+      for (const chunk of allChunks.slice(0, 3)) {
+        console.log(`\n  📄 ${chunk.heading}`);
+        console.log(`     Path: ${chunk.documentPath}`);
+        console.log(`     Category: ${chunk.category}`);
+        console.log(`     Size: ${chunk.content.length} chars`);
+      }
+    }
+  }
+
+  // Cleanup
+  console.log('');
+  console.log('🧹 Cleaning up temporary files...');
+  cleanupSources(fetchedSources);
+  console.log('   ✅ Done');
+
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('   ✅ Reindex complete!');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('');
+}
+
+// =============================================================================
+// ENTRY POINT
+// =============================================================================
+
+reindex().catch(error => {
+  console.error('');
+  console.error('❌ Reindex failed:', error);
+  process.exit(1);
+});

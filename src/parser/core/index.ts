@@ -6,26 +6,13 @@
 
 export {
   DEFAULT_CHUNK_CONFIG,
-  SDK_CHUNK_CONFIG,
-  BILLINGSDK_CHUNK_CONFIG,
-  OPENAPI_CHUNK_CONFIG,
-  DOCS_CHUNK_CONFIG,
-  DOCS_BASE_URL,
-  BILLINGSDK_DOCS_URL,
-  TEMP_DIR,
-  DATA_DIR,
-  getChunkConfig,
-  ensureDir,
-  cloneRepo,
-  extractRepoInfo,
+  getChunkConfigFromConfig,
 } from './config.js';
 
 // Text utilities
 export {
   cleanHeading,
   extractDescription,
-  removeImportsExports,
-  removeFrontmatter,
   normalizeWhitespace,
   normalizeLineEndings,
   removeHtmlEmbeds,
@@ -46,10 +33,7 @@ export {
 // Section utilities
 export {
   splitByCodeBlocks,
-  splitByCodeBlocksWithParagraphs,
-  parseIntoSections,
   parseIntoTree,
-  mergeSections,
   extractFirstSubheading,
   splitLargeSection,
   getSectionSize,
