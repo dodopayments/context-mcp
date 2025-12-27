@@ -23,6 +23,7 @@ ContextMCP follows a simple workflow:
 4. **Connect** - Configure your AI assistant to use the MCP server
 
 The system:
+
 - Fetches documentation from GitHub, local files, or URLs
 - Parses MDX, Markdown, or OpenAPI formats
 - Chunks content intelligently for optimal retrieval
@@ -35,7 +36,7 @@ The system:
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/contextmcp/contextmcp.git
+git clone https://github.com/dodopayments/contextmcp.git
 cd contextmcp
 npm install
 ```
@@ -66,6 +67,7 @@ npm run reindex
 ```
 
 This will:
+
 - Fetch all configured sources
 - Parse and chunk the documentation
 - Generate embeddings
@@ -98,7 +100,7 @@ vectordb:
   # Optional: Use namespaces to separate environments
   namespace: production
   pinecone:
-    cloud: aws  # Options: aws, gcp, azure
+    cloud: aws # Options: aws, gcp, azure
     region: us-east-1
 
 # =============================================================================
@@ -106,48 +108,48 @@ vectordb:
 # =============================================================================
 embeddings:
   provider: openai
-  model: text-embedding-3-large  # OpenAI embedding model
-  dimensions: 3072  # Must match model dimensions
+  model: text-embedding-3-large # OpenAI embedding model
+  dimensions: 3072 # Must match model dimensions
 
 # =============================================================================
 # DOCUMENTATION SOURCES
 # =============================================================================
 sources:
   # Each source defines where to get docs and how to parse them
-  - name: docs                    # Unique identifier (lowercase, hyphens only)
-    displayName: 'API Documentation'  # Human-readable name
-    type: github                  # Source type: github, local, or url
-    repository: owner/repo        # GitHub repo (for github type)
-    branch: main                  # Git branch (default: main)
-    path: content/docs/           # Path within repo (default: .)
-    parser: mdx                   # Parser: mdx, markdown, or openapi
-    baseUrl: https://docs.example.com  # Base URL for source links
-    language: typescript          # Optional: programming language context
-    optional: false               # Optional: don't fail if source missing
-    skipDirs:                     # Directories to skip
+  - name: docs # Unique identifier (lowercase, hyphens only)
+    displayName: 'API Documentation' # Human-readable name
+    type: github # Source type: github, local, or url
+    repository: owner/repo # GitHub repo (for github type)
+    branch: main # Git branch (default: main)
+    path: content/docs/ # Path within repo (default: .)
+    parser: mdx # Parser: mdx, markdown, or openapi
+    baseUrl: https://docs.example.com # Base URL for source links
+    language: typescript # Optional: programming language context
+    optional: false # Optional: don't fail if source missing
+    skipDirs: # Directories to skip
       - node_modules
       - .git
       - images
-    skipFiles:                    # Files to skip (case-insensitive)
+    skipFiles: # Files to skip (case-insensitive)
       - LICENSE
       - README.md
     # OpenAPI-specific options
-    urlMappingDir: api-reference  # Directory with MDX files for URL mapping
+    urlMappingDir: api-reference # Directory with MDX files for URL mapping
 
 # =============================================================================
 # REINDEXING SETTINGS
 # =============================================================================
 reindex:
-  clearBeforeReindex: true  # Clear all vectors before reindexing
-  batchSize: 100            # Batch size for embeddings (1-500)
+  clearBeforeReindex: true # Clear all vectors before reindexing
+  batchSize: 100 # Batch size for embeddings (1-500)
 
 # =============================================================================
 # CHUNKING SETTINGS
 # =============================================================================
 chunking:
-  maxChunkSize: 2000    # Maximum characters per chunk (100-10000)
-  minChunkSize: 250     # Minimum characters for standalone chunk (50-5000)
-  idealChunkSize: 1000  # Target size for merging small sections (100-5000)
+  maxChunkSize: 2000 # Maximum characters per chunk (100-10000)
+  minChunkSize: 250 # Minimum characters for standalone chunk (50-5000)
+  idealChunkSize: 1000 # Target size for merging small sections (100-5000)
 ```
 
 See config.example.yaml for more details.
@@ -162,16 +164,18 @@ Fetch documentation from GitHub repositories:
 - name: docs
   type: github
   repository: owner/repo
-  branch: main              # Optional, default: main
-  path: content/docs/       # Optional, default: .
+  branch: main # Optional, default: main
+  path: content/docs/ # Optional, default: .
   parser: mdx
   baseUrl: https://docs.example.com
 ```
 
 **Required fields:**
+
 - `repository` - GitHub repository in `owner/repo` format
 
 **Optional fields:**
+
 - `branch` - Git branch (default: `main`)
 - `path` - Path within repository (default: `.`)
 - `baseUrl` - Base URL for generating source links
@@ -188,10 +192,11 @@ Use local filesystem paths (useful for development):
   type: local
   localPath: ./docs/
   parser: markdown
-  optional: true  # Don't fail if path doesn't exist
+  optional: true # Don't fail if path doesn't exist
 ```
 
 **Required fields:**
+
 - `localPath` - Path to documentation directory
 
 #### URL Sources
@@ -207,6 +212,7 @@ Download documentation from a URL:
 ```
 
 **Required fields:**
+
 - `url` - URL to fetch from
 
 ### Parser Types
@@ -222,6 +228,7 @@ For documentation with JSX components (Mintlify, Fumadocs, Docusaurus, etc.):
 ```
 
 **Features:**
+
 - Handles `<Tab>`, `<Tabs>`, `<Callout>`, `<Card>` components
 - Auto-detects Mintlify vs Fumadocs patterns
 - Preserves code blocks and examples
@@ -229,6 +236,7 @@ For documentation with JSX components (Mintlify, Fumadocs, Docusaurus, etc.):
 - Splits oversized sections intelligently
 
 **Supported frameworks:**
+
 - Mintlify
 - Fumadocs
 - Docusaurus
@@ -246,6 +254,7 @@ For plain markdown files (README, CHANGELOG, etc.):
 ```
 
 **Features:**
+
 - Hierarchical section parsing
 - Smart merging of small sections
 - Automatic file type detection (README, CHANGELOG, MIGRATION)
@@ -253,6 +262,7 @@ For plain markdown files (README, CHANGELOG, etc.):
 - Changelog version grouping
 
 **Best for:**
+
 - SDK documentation
 - README files
 - CHANGELOG files
@@ -267,13 +277,15 @@ For OpenAPI/Swagger specifications:
 - name: api-spec
   parser: openapi
   baseUrl: https://docs.example.com/api-reference
-  urlMappingDir: api-reference  # Optional: for URL mapping
+  urlMappingDir: api-reference # Optional: for URL mapping
 ```
 
 **Required fields:**
+
 - `baseUrl` - Base URL for API documentation links
 
 **Features:**
+
 - Parses OpenAPI 3.x specifications (YAML or JSON)
 - Generates endpoint documentation chunks
 - Extracts code samples from `x-codeSamples`
@@ -290,7 +302,7 @@ If you have MDX files with `openapi:` frontmatter, set `urlMappingDir` to map AP
   path: openapi
   parser: openapi
   baseUrl: https://docs.example.com/api-reference
-  urlMappingDir: api-reference  # Directory with MDX files
+  urlMappingDir: api-reference # Directory with MDX files
 ```
 
 ### Chunking Configuration
@@ -299,12 +311,13 @@ Control how documentation is split into chunks:
 
 ```yaml
 chunking:
-  maxChunkSize: 2000    # Maximum characters per chunk
-  minChunkSize: 250     # Minimum for standalone chunk
-  idealChunkSize: 1000  # Target for merging small sections
+  maxChunkSize: 2000 # Maximum characters per chunk
+  minChunkSize: 250 # Minimum for standalone chunk
+  idealChunkSize: 1000 # Target for merging small sections
 ```
 
 **Recommendations:**
+
 - **maxChunkSize**: 1500-2500 characters (optimal for RAG)
 - **minChunkSize**: 200-500 characters (prevents tiny chunks)
 - **idealChunkSize**: 800-1200 characters (target for merging)
@@ -361,6 +374,7 @@ npx tsx scripts/reindex.ts --dry-run
 ```
 
 This is useful for:
+
 - Testing configuration changes
 - Verifying parsing works correctly
 - Inspecting generated chunks (saved to `data/chunks-index.json`)
@@ -403,8 +417,8 @@ The reindex script supports:
      "compatibility_date": "2024-01-01",
      "vars": {
        "SERVER_NAME": "my-company-docs",
-       "SERVER_DESCRIPTION": "My Company Documentation Search"
-     }
+       "SERVER_DESCRIPTION": "My Company Documentation Search",
+     },
    }
    ```
 
@@ -430,12 +444,12 @@ The reindex script supports:
 
 The Cloudflare Worker uses these environment variables:
 
-| Variable            | Description                                    |
-| ------------------- | ---------------------------------------------- |
-| `OPENAI_API_KEY`    | OpenAI API key (required)                      |
-| `PINECONE_API_KEY`  | Pinecone API key (required)                    |
-| `SERVER_NAME`        | Server name (default: `contextmcp`)            |
-| `SERVER_DESCRIPTION` | Server description (shown in MCP clients)      |
+| Variable             | Description                               |
+| -------------------- | ----------------------------------------- |
+| `OPENAI_API_KEY`     | OpenAI API key (required)                 |
+| `PINECONE_API_KEY`   | Pinecone API key (required)               |
+| `SERVER_NAME`        | Server name (default: `contextmcp`)       |
+| `SERVER_DESCRIPTION` | Server description (shown in MCP clients) |
 
 Set `SERVER_NAME` and `SERVER_DESCRIPTION` in `wrangler.jsonc` or as secrets.
 
@@ -485,11 +499,7 @@ Add to your Claude Desktop config file:
   "mcpServers": {
     "my-docs": {
       "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote@latest",
-        "https://your-worker.your-subdomain.workers.dev/mcp"
-      ]
+      "args": ["-y", "mcp-remote@latest", "https://your-worker.your-subdomain.workers.dev/mcp"]
     }
   }
 }
@@ -543,11 +553,11 @@ curl -X POST "https://your-worker.workers.dev/search" \
 
 ### Query Parameters
 
-| Parameter | Type   | Default | Description                    |
-| --------- | ------ | ------- | ------------------------------ |
-| `query`   | string | -       | Search query (required)        |
-| `limit`   | number | 10      | Number of results (1-50)       |
-| `minScore`| number | 0.7     | Minimum similarity score (0-1) |
+| Parameter  | Type   | Default | Description                    |
+| ---------- | ------ | ------- | ------------------------------ |
+| `query`    | string | -       | Search query (required)        |
+| `limit`    | number | 10      | Number of results (1-50)       |
+| `minScore` | number | 0.7     | Minimum similarity score (0-1) |
 
 ### Health Check
 
@@ -710,6 +720,7 @@ contextmcp/
 **Problem:** "Worker failed to start"
 
 **Solution:** Verify all secrets are set:
+
 ```bash
 wrangler secret list
 ```
@@ -723,6 +734,7 @@ wrangler secret list
 **Problem:** "No results returned"
 
 **Solution:**
+
 1. Verify the index has been populated: `npm run reindex`
 2. Check `minScore` setting - try lowering it
 3. Verify the query is being embedded correctly
@@ -730,6 +742,7 @@ wrangler secret list
 **Problem:** "Results not relevant"
 
 **Solution:**
+
 1. Adjust `minScore` to filter out low-quality matches
 2. Check chunk sizes - may need to adjust `maxChunkSize`
 3. Verify source content is being parsed correctly
@@ -739,6 +752,7 @@ wrangler secret list
 **Problem:** "Reindexing is slow"
 
 **Solution:**
+
 1. Increase `reindex.batchSize` (up to 500)
 2. Use `--source` flag to reindex only changed sources
 3. Consider using `clearBeforeReindex: false` for incremental updates
@@ -765,5 +779,5 @@ Built with:
 
 <p align="center">
   <strong>ContextMCP</strong> - Self-hosted MCP for your documentation<br>
-  <a href="https://github.com/contextmcp/contextmcp">GitHub</a> • <a href="https://modelcontextprotocol.io/">MCP Docs</a>
+  <a href="https://github.com/dodopayments/contextmcp">GitHub</a> • <a href="https://modelcontextprotocol.io/">MCP Docs</a>
 </p>

@@ -2,7 +2,7 @@
 # Self-hosted MCP server for your documentation
 #
 # Copy this file to config.yaml and customize for your project.
-# See https://github.com/contextmcp/contextmcp for documentation.
+# See https://github.com/dodopayments/contextmcp for documentation.
 
 # =============================================================================
 # VECTOR DATABASE
@@ -51,11 +51,11 @@ sources:
       - node_modules
       - .git
       - images
-      - openapi  # Raw spec folder (loaded via openapiSpec)
-      - ar  # Arabic translation
-      - cn  # Chinese translation
-      - internal  # Internal docs
-      - test  # Test files
+      - openapi # Raw spec folder (loaded via openapiSpec)
+      - ar # Arabic translation
+      - cn # Chinese translation
+      - internal # Internal docs
+      - test # Test files
     # Skip specific files
     skipFiles:
       - LICENSE
