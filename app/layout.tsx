@@ -26,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased selection:bg-[#B2F348] selection:text-black`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased selection:bg-[#60A5FA] selection:text-black`}>
         <div className="noise-bg" />
         <div className="relative z-10">
           {children}

@@ -8,15 +8,16 @@ export function Navbar() {
     return (
         <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/5 bg-black/50 backdrop-blur-md">
             <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
-                <Link href="/" className="flex items-center gap-3 group">
-                    <div className="relative h-8 w-8 transition-transform group-hover:scale-105">
+                <Link href="/" className="flex items-center gap-2 group">
+                    <div className="relative h-7 w-7 transition-transform group-hover:scale-105">
                         <Image
                             src="/SVG/brandmark.svg"
-                            alt="ContextMCP Logo"
+                            alt="Dodo Payments"
                             fill
                             className="object-contain"
                         />
                     </div>
+                    <span className="text-zinc-600 font-light">/</span>
                     <span className="font-sans font-semibold tracking-tight text-white">ContextMCP</span>
                 </Link>
 
@@ -32,7 +33,7 @@ export function Navbar() {
                     <Link
                         href="https://github.com/dodopayments/contextmcp"
                         target="_blank"
-                        className="hidden sm:flex h-9 items-center rounded-full bg-[#B2F348] px-5 text-sm font-semibold text-black transition-transform hover:scale-105 active:scale-95"
+                        className="hidden sm:flex h-9 items-center rounded-full bg-[#60A5FA] px-5 text-sm font-semibold text-black transition-transform hover:scale-105 active:scale-95"
                     >
                         Get Started
                     </Link>

@@ -33,10 +33,10 @@ function FaqItem({ question, answer, isOpen, onClick }: { question: string, answ
         <div className="border-b border-white/5">
             <button
                 onClick={onClick}
-                className="flex w-full items-center justify-between py-6 text-left transition-colors hover:text-[#B2F348]"
+                className="flex w-full items-center justify-between py-6 text-left transition-colors hover:text-[#60A5FA]"
             >
                 <span className={cn("text-lg font-medium", isOpen ? "text-white" : "text-zinc-400")}>{question}</span>
-                <div className={cn("relative flex h-5 w-5 items-center justify-center transition-colors", isOpen ? "text-[#B2F348]" : "text-zinc-600")}>
+                <div className={cn("relative flex h-5 w-5 items-center justify-center transition-colors", isOpen ? "text-[#60A5FA]" : "text-zinc-600")}>
                     <Plus className={cn("absolute h-5 w-5 transition-transform duration-300", isOpen ? "rotate-45 opacity-0" : "rotate-0 opacity-100")} />
                     <Minus className={cn("absolute h-5 w-5 transition-transform duration-300", isOpen ? "rotate-0 opacity-100" : "-rotate-45 opacity-0")} />
                 </div>

@@ -21,7 +21,7 @@ function FlowArrow() {
                     animate={{ x: [0, 4, 0] }}
                     transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
                 >
-                    <ArrowRight className="h-5 w-5 text-[#B2F348]/50" />
+                    <ArrowRight className="h-5 w-5 text-[#60A5FA]/50" />
                 </motion.div>
             </div>
         </div>
@@ -32,7 +32,7 @@ function Step({
     icon: Icon,
     title,
     description,
-    accentColor = "#B2F348",
+    accentColor = "#60A5FA",
     delay = 0
 }: {
     icon: any;
@@ -93,7 +93,7 @@ export function ArchitectureDiagram() {
                     icon={FileText}
                     title="Parse & Chunk"
                     description="AST-aware chunking preserves code blocks and semantic context."
-                    accentColor="#B2F348"
+                    accentColor="#60A5FA"
                     delay={0.1}
                 />
 

@@ -33,10 +33,10 @@ export function FeaturesBento() {
                 transition={{ delay: 0.1 }}
                 className="md:col-span-2 rounded-3xl border border-white/5 bg-[#09090b] overflow-hidden group hover:border-white/10 transition-colors relative"
             >
-                <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[#B2F348] opacity-[0.03] blur-[80px]" />
+                <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[#60A5FA] opacity-[0.03] blur-[80px]" />
 
                 <div className="p-8 pb-0">
-                    <h3 className="text-2xl font-bold text-white mb-2"><span className="text-[#B2F348]">AST-Aware</span> Chunking</h3>
+                    <h3 className="text-2xl font-bold text-white mb-2"><span className="text-[#60A5FA]">AST-Aware</span> Chunking</h3>
                     <p className="text-zinc-500 max-w-md">
                         Our AST-based parsers understand code blocks, headers, and semantic boundaries to keep context intact.
                     </p>
@@ -52,13 +52,13 @@ export function FeaturesBento() {
                         <div className="text-zinc-500 opacity-50 pl-2">return stripe.charge(id);</div>
                         <div className="text-zinc-500 opacity-50">{'}'}</div>
                     </div>
-                    <div className="bg-[#B2F348]/5 p-4 space-y-2">
-                        <div className="text-[#B2F348] font-semibold mb-2">ContextMCP</div>
+                    <div className="bg-[#60A5FA]/5 p-4 space-y-2">
+                        <div className="text-[#60A5FA] font-semibold mb-2">ContextMCP</div>
                         <div className="text-zinc-300">function payment(req) {'{'}</div>
                         <div className="text-zinc-300 pl-2">const {'{'}id{'}'} = req.body;</div>
                         <div className="text-zinc-300 pl-2">return stripe.charge(id);</div>
                         <div className="text-zinc-300">{'}'}</div>
-                        <div className="text-[#B2F348] text-[9px] mt-1">✓ Full Context Preserved</div>
+                        <div className="text-[#60A5FA] text-[9px] mt-1">✓ Full Context Preserved</div>
                     </div>
                 </div>
             </motion.div>

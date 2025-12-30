@@ -27,7 +27,7 @@ export function HeroVisual() {
                         <div className="pl-4">
                             <span className="text-zinc-500">- </span>
                             <span className="text-blue-400">name:</span>
-                            <span className="text-[#B2F348]"> dodo-docs</span>
+                            <span className="text-[#60A5FA]"> dodo-docs</span>
                         </div>
                         <div className="pl-6">
                             <span className="text-blue-400">type:</span>
@@ -64,9 +64,9 @@ export function HeroVisual() {
                         <motion.div
                             animate={{ rotate: 360 }}
                             transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                            className="absolute inset-0 rounded-full border-t border-[#B2F348] opacity-50"
+                            className="absolute inset-0 rounded-full border-t border-[#60A5FA] opacity-50"
                         />
-                        <Zap className="h-5 w-5 text-[#B2F348] fill-[#B2F348]/20" />
+                        <Zap className="h-5 w-5 text-[#60A5FA] fill-[#60A5FA]/20" />
                     </div>
                 </div>
 
@@ -83,7 +83,7 @@ export function HeroVisual() {
                             <FileJson className="h-4 w-4 text-zinc-500" />
                             <span className="text-xs font-mono text-zinc-400">response.json</span>
                         </div>
-                        {/* <span className="text-[10px] text-[#B2F348] font-mono bg-[#B2F348]/10 px-1.5 py-0.5 rounded">
+                        {/* <span className="text-[10px] text-[#A78BFA] font-mono bg-[#A78BFA]/10 px-1.5 py-0.5 rounded">
                             24ms
                         </span> */}
                     </div>
@@ -92,7 +92,7 @@ export function HeroVisual() {
                     <div className="p-4 font-mono text-[10px] sm:text-xs leading-relaxed text-zinc-400">
                         <div><span className="text-zinc-600">{`{`}</span></div>
                         <div className="pl-4">
-                            <span className="text-purple-400">"score"</span>: <span className="text-[#B2F348]">0.89</span>,
+                            <span className="text-purple-400">"score"</span>: <span className="text-[#60A5FA]">0.89</span>,
                         </div>
                         <div className="pl-4">
                             <span className="text-purple-400">"heading"</span>: <span className="text-zinc-300">"Quick Start"</span>,
@@ -117,7 +117,7 @@ export function HeroVisual() {
             </div>
 
             {/* Background Decor */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[120%] bg-[#B2F348] opacity-[0.03] blur-[100px] -z-10 pointer-events-none rounded-full" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[120%] bg-[#60A5FA] opacity-[0.03] blur-[100px] -z-10 pointer-events-none rounded-full" />
         </div>
     );
 }

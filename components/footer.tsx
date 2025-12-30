@@ -8,18 +8,19 @@ export function Footer() {
 
                 <div className="flex flex-col items-center md:items-start gap-2">
                     <div className="flex items-center gap-2">
-                        <div className="relative h-6 w-6 opacity-80">
+                        <div className="relative h-5 w-5 opacity-80">
                             <Image
                                 src="/SVG/brandmark.svg"
-                                alt="Dodo Payments Logo"
+                                alt="Dodo Payments"
                                 fill
                                 className="object-contain"
                             />
                         </div>
+                        <span className="text-zinc-600 font-light">/</span>
                         <span className="font-semibold text-zinc-300">ContextMCP</span>
                     </div>
                     <p className="text-sm text-zinc-500">
-                        Maintained by the engineering team at <a href="https://dodopayments.com" className="text-zinc-400 hover:text-[#B2F348] transition-colors">Dodo Payments</a>.
+                        Maintained by the engineering team at <a href="https://dodopayments.com" className="text-zinc-400 hover:text-[#60A5FA] transition-colors">Dodo Payments</a>.
                     </p>
                 </div>
 

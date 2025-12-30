@@ -3,7 +3,8 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
-  --dodo-green: #B2F348;
+  --accent-primary: #60A5FA;
+  --accent-secondary: #3B82F6;
   --card-bg: #0A0A0A;
   --border: #27272A;
 }
@@ -11,7 +12,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-dodo-green: var(--dodo-green);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-secondary: var(--accent-secondary);
   --color-card-bg: var(--card-bg);
   --color-border: var(--border);
   --font-sans: var(--font-geist-sans);
@@ -38,11 +40,11 @@ body {
 
 /* Glow Utilities */
 .glow-text {
-  text-shadow: 0 0 20px rgba(178, 243, 72, 0.3);
+  text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);
 }
 
 .glow-box {
-  box-shadow: 0 0 40px -10px rgba(178, 243, 72, 0.15);
+  box-shadow: 0 0 40px -10px rgba(96, 165, 250, 0.2);
 }
 
 /* Glassmorphism that actually looks good */
