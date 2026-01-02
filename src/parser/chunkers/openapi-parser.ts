@@ -1,6 +1,6 @@
 /**
  * OpenAPI Specification Parser
- * 
+ *
  * Parses OpenAPI/Swagger specs and generates documentation chunks for:
  * - API endpoints with full request/response documentation
  * - Code samples in various languages
@@ -13,8 +13,21 @@ import { parse as parseYaml } from 'yaml';
 import { DocChunk, ChunkConfig } from '../../types/index.js';
 import { DEFAULT_CHUNK_CONFIG } from '../core/config.js';
 
-// URL lookup map: "METHOD /path" -> documentation URL (built from MDX frontmatter)
-let docUrlMap: Map<string, string> = new Map();
+// =============================================================================
+// PARSING CONTEXT (replaces global mutable state)
+// =============================================================================
+
+/**
+ * Context object that holds parsing state.
+ * This replaces the previous global variables, making the parser
+ * thread-safe and easier to test.
+ */
+interface ParsingContext {
+  /** Map of "METHOD /path" -> documentation URL */
+  docUrlMap: Map<string, string>;
+  /** Base URL for fallback URL generation */
+  baseUrl: string;
+}
 
 // =============================================================================
 // OPENAPI TYPES
@@ -132,47 +145,47 @@ interface CodeSample {
  * Resolve a schema reference to its definition (with cycle detection)
  */
 function resolveSchema(
-  ref: string, 
-  schemas: Record<string, SchemaObject>, 
+  ref: string,
+  schemas: Record<string, SchemaObject>,
   visited: Set<string> = new Set()
 ): SchemaObject | null {
   const schemaName = ref.replace('#/components/schemas/', '');
-  
+
   if (visited.has(schemaName)) {
     return null; // Cycle detected
   }
-  
+
   visited.add(schemaName);
   const schema = schemas[schemaName];
-  
+
   if (!schema) return null;
-  
+
   if (schema.$ref) {
     return resolveSchema(schema.$ref, schemas, visited);
   }
-  
+
   return schema;
 }
 
 function generateExample(
-  schema: SchemaObject | null, 
-  schemas: Record<string, SchemaObject>, 
+  schema: SchemaObject | null,
+  schemas: Record<string, SchemaObject>,
   depth: number = 0,
   fieldName?: string
 ): any {
   if (depth > 3 || !schema) return null;
-  
+
   // Handle $ref
   if (schema.$ref) {
     const resolved = resolveSchema(schema.$ref, schemas, new Set());
     return generateExample(resolved, schemas, depth + 1, fieldName);
   }
-  
+
   // Use provided example
   if (schema.example !== undefined) {
     return schema.example;
   }
-    
+
   // Handle allOf
   if (schema.allOf) {
     const merged: any = {};
@@ -184,7 +197,7 @@ function generateExample(
     }
     return Object.keys(merged).length > 0 ? merged : null;
   }
-  
+
   // Handle oneOf/anyOf - take first
   if (schema.oneOf?.[0]) {
     return generateExample(schema.oneOf[0] as SchemaObject, schemas, depth + 1, fieldName);
@@ -192,16 +205,16 @@ function generateExample(
   if (schema.anyOf?.[0]) {
     return generateExample(schema.anyOf[0] as SchemaObject, schemas, depth + 1, fieldName);
   }
-  
+
   // Handle enum
   if (schema.enum && schema.enum.length > 0) {
     return schema.enum[0];
   }
-  
-  const type = Array.isArray(schema.type) 
+
+  const type = Array.isArray(schema.type)
     ? schema.type.find(t => t !== 'null') || 'string'
     : schema.type;
-  
+
   switch (type) {
     case 'object':
       if (schema.properties) {
@@ -220,14 +233,14 @@ function generateExample(
         return Object.keys(obj).length > 0 ? obj : {};
       }
       return {};
-      
+
     case 'array':
       if (schema.items) {
         const itemEx = generateExample(schema.items as SchemaObject, schemas, depth + 1);
         return itemEx !== null ? [itemEx] : [];
       }
       return [];
-      
+
     case 'string':
       if (schema.format === 'date-time') return '2024-01-15T10:30:00Z';
       if (schema.format === 'date') return '2024-01-15';
@@ -235,16 +248,16 @@ function generateExample(
       if (schema.format === 'uri') return 'https://example.com';
       if (schema.format === 'uuid') return '550e8400-e29b-41d4-a716-446655440000';
       return schema.default || 'string';
-      
+
     case 'integer':
       return schema.default ?? schema.minimum ?? 0;
-      
+
     case 'number':
       return schema.default ?? schema.minimum ?? 0.0;
-      
+
     case 'boolean':
       return schema.default ?? true;
-      
+
     default:
       return null;
   }
@@ -264,13 +277,13 @@ function formatSchemaProperties(
   depth: number = 0
 ): string {
   if (!schema || depth > 3) return '';
-  
+
   // Handle $ref
   if (schema.$ref) {
     const resolved = resolveSchema(schema.$ref, schemas, new Set());
     return formatSchemaProperties(resolved, schemas, indent, depth + 1);
   }
-  
+
   // Handle allOf
   if (schema.allOf) {
     const lines: string[] = [];
@@ -279,40 +292,41 @@ function formatSchemaProperties(
     }
     return lines.filter(Boolean).join('\n');
   }
-  
+
   if (!schema.properties) return '';
-  
+
   const lines: string[] = [];
   const required = new Set(schema.required || []);
-  
+
   for (const [propName, propSchema] of Object.entries(schema.properties)) {
     const isRequired = required.has(propName);
-    const nullable = propSchema.nullable || (Array.isArray(propSchema.type) && propSchema.type.includes('null'));
-    
+    const nullable =
+      propSchema.nullable || (Array.isArray(propSchema.type) && propSchema.type.includes('null'));
+
     // Build type string
     let typeStr = buildTypeString(propSchema);
-    
+
     // Add format
     if (propSchema.format) {
       typeStr += ` (${propSchema.format})`;
     }
-    
+
     // Add nullable marker
     if (nullable) {
       typeStr += ' | null';
     }
-    
+
     const reqStr = isRequired ? 'Required' : 'Optional';
     let line = `${indent}- **${propName}** (${typeStr}) - ${reqStr}`;
-    
+
     if (propSchema.description) {
       line += ` - ${propSchema.description}`;
     }
-    
+
     if (propSchema.enum && propSchema.enum.length > 0) {
       line += ` (Allowed: ${propSchema.enum.map(e => `\`${e}\``).join(', ')})`;
     }
-    
+
     // Add constraints
     const constraints: string[] = [];
     if (propSchema.minimum !== undefined) constraints.push(`min: ${propSchema.minimum}`);
@@ -320,15 +334,15 @@ function formatSchemaProperties(
     if (constraints.length > 0) {
       line += ` [${constraints.join(', ')}]`;
     }
-    
+
     lines.push(line);
-    
+
     // Add nested properties
     if (propSchema.type === 'object' && propSchema.properties && depth < 2) {
       lines.push(formatSchemaProperties(propSchema, schemas, indent + '  ', depth + 1));
     }
   }
-  
+
   return lines.filter(Boolean).join('\n');
 }
 
@@ -339,32 +353,36 @@ function buildTypeString(propSchema: SchemaObject): string {
   if (propSchema.$ref) {
     return propSchema.$ref.replace('#/components/schemas/', '');
   }
-  
+
   if (propSchema.allOf) {
-    const types = propSchema.allOf.map(s => 
-      s.$ref ? s.$ref.replace('#/components/schemas/', '') : (s as SchemaObject).type
-    ).filter(Boolean).join(' & ');
+    const types = propSchema.allOf
+      .map(s => (s.$ref ? s.$ref.replace('#/components/schemas/', '') : (s as SchemaObject).type))
+      .filter(Boolean)
+      .join(' & ');
     return types || 'object';
   }
-  
+
   if (propSchema.oneOf || propSchema.anyOf) {
     const variants = propSchema.oneOf || propSchema.anyOf || [];
-    return variants.map(s => 
-      s.$ref ? s.$ref.replace('#/components/schemas/', '') : (s as SchemaObject).type
-    ).filter(Boolean).join(' | ') || 'any';
+    return (
+      variants
+        .map(s => (s.$ref ? s.$ref.replace('#/components/schemas/', '') : (s as SchemaObject).type))
+        .filter(Boolean)
+        .join(' | ') || 'any'
+    );
   }
-  
+
   if (Array.isArray(propSchema.type)) {
     return propSchema.type.filter(t => t !== 'null').join(' | ');
   }
-  
+
   if (propSchema.type === 'array' && propSchema.items) {
-    const itemType = (propSchema.items as SchemaObject).$ref 
+    const itemType = (propSchema.items as SchemaObject).$ref
       ? (propSchema.items as SchemaObject).$ref!.replace('#/components/schemas/', '')
       : (propSchema.items as SchemaObject).type || 'any';
     return `array[${itemType}]`;
   }
-  
+
   return propSchema.type || 'any';
 }
 
@@ -377,34 +395,34 @@ function buildTypeString(propSchema: SchemaObject): string {
  */
 function formatParameters(params: Parameter[]): string {
   if (!params || params.length === 0) return 'None';
-  
+
   const queryParams = params.filter(p => p.in === 'query');
   const pathParams = params.filter(p => p.in === 'path');
   const headerParams = params.filter(p => p.in === 'header');
-  
+
   const lines: string[] = [];
-  
+
   if (pathParams.length > 0) {
     lines.push('#### Path Parameters');
     for (const p of pathParams) {
       lines.push(formatParameter(p));
     }
   }
-  
+
   if (queryParams.length > 0) {
     lines.push('#### Query Parameters');
     for (const p of queryParams) {
       lines.push(formatParameter(p));
     }
   }
-  
+
   if (headerParams.length > 0) {
     lines.push('#### Header Parameters');
     for (const p of headerParams) {
       lines.push(formatParameter(p));
     }
   }
-  
+
   return lines.join('\n');
 }
 
@@ -415,76 +433,75 @@ function formatParameter(p: Parameter): string {
   const typeStr = p.schema?.type || 'string';
   const reqStr = p.required ? 'Required' : 'Optional';
   let line = `- **${p.name}** (${typeStr}) - ${reqStr}`;
-  
+
   if (p.description) line += ` - ${p.description}`;
   if (p.schema?.enum) line += ` (Allowed: ${p.schema.enum.map(e => `\`${e}\``).join(', ')})`;
   if (p.schema?.default !== undefined) line += ` (Default: \`${p.schema.default}\`)`;
   if (p.schema?.example !== undefined) line += ` (Example: \`${p.schema.example}\`)`;
-  
+
   const constraints: string[] = [];
   if (p.schema?.minimum !== undefined) constraints.push(`min: ${p.schema.minimum}`);
   if (p.schema?.maximum !== undefined) constraints.push(`max: ${p.schema.maximum}`);
   if (constraints.length > 0) line += ` [${constraints.join(', ')}]`;
-  
+
   return line;
 }
 
-// Current base URL for URL generation (set by parseOpenApiSpec)
-let currentBaseUrl: string | null = null;
-
 /**
  * Build a URL lookup map by reading the `openapi:` frontmatter from MDX files.
- * 
+ *
  * Each MDX file contains frontmatter like:
  *   openapi: get /payments
- * 
+ *
  * We build a map: "GET /payments" -> baseUrl + "/" + file-path-slug
  * This ensures URLs are always correct since we use file paths as the source of truth.
- * 
+ *
  * @param docsRoot - Root directory containing the documentation
  * @param urlMappingDir - Directory name containing MDX files with openapi frontmatter (e.g., "api-reference")
  * @param baseUrl - Base URL for the documentation (e.g., "https://docs.example.com/api-reference")
+ * @returns Map of "METHOD /path" -> documentation URL
  */
-function buildDocUrlMap(docsRoot: string, urlMappingDir: string, baseUrl: string): void {
+function buildDocUrlMap(
+  docsRoot: string,
+  urlMappingDir: string,
+  baseUrl: string
+): Map<string, string> {
+  const docUrlMap = new Map<string, string>();
   const mappingDir = path.join(docsRoot, urlMappingDir);
-  
+
   if (!fs.existsSync(mappingDir)) {
-    return;
+    return docUrlMap;
   }
-  
-  // Store the base URL for getDocUrl to use
-  currentBaseUrl = baseUrl;
-  docUrlMap.clear();
-  
+
   // Recursively find all MDX files and extract their openapi reference
   function scanDir(dir: string, relativePath: string = ''): void {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
-      
+
       if (entry.isDirectory()) {
         scanDir(fullPath, relPath);
       } else if (entry.name.endsWith('.mdx')) {
         try {
           const content = fs.readFileSync(fullPath, 'utf-8');
-          
+
           // Extract openapi reference from frontmatter
-          // Formats: 
+          // Formats:
           //   openapi: get /payments
           //   openapi: "post /checkouts"
           const openapiMatch = content.match(/^openapi:\s*"?(\w+)\s+([^"\n\r]+)"?/m);
-          
+
           if (openapiMatch) {
             const method = openapiMatch[1].toUpperCase();
             const apiPath = openapiMatch[2].trim().replace(/"$/, '');
-            
+
             // Build the documentation URL from file path
             // baseUrl already contains the full prefix (e.g., https://docs.x.com/api-reference)
             const slug = relPath.replace(/\.mdx$/, '');
             const docUrl = `${baseUrl}/${slug}`;
-            
+
             // Create lookup key: "METHOD /path" (e.g., "GET /payments")
             const lookupKey = `${method} ${apiPath}`;
             docUrlMap.set(lookupKey, docUrl);
@@ -495,37 +512,43 @@ function buildDocUrlMap(docsRoot: string, urlMappingDir: string, baseUrl: string
       }
     }
   }
-  
+
   scanDir(mappingDir);
+  return docUrlMap;
 }
 
 /**
  * Get documentation URL for an operation.
- * 
+ *
  * Uses the method + path combination to look up the correct documentation URL
  * from the map built by scanning actual MDX files' `openapi:` frontmatter.
+ *
+ * @param ctx - Parsing context containing URL map and base URL
+ * @param operationId - The operation ID from OpenAPI spec
+ * @param method - HTTP method
+ * @param pathStr - API path
  */
-function getDocUrl(operationId: string, method: string, pathStr: string): string {
+function getDocUrl(
+  ctx: ParsingContext,
+  operationId: string,
+  method: string,
+  pathStr: string
+): string {
   // Primary lookup: "METHOD /path" (e.g., "GET /payments")
   const lookupKey = `${method.toUpperCase()} ${pathStr}`;
-  if (docUrlMap.has(lookupKey)) {
-    return docUrlMap.get(lookupKey)!;
+  if (ctx.docUrlMap.has(lookupKey)) {
+    return ctx.docUrlMap.get(lookupKey)!;
   }
-  
+
   // Fallback: Generate URL based on operationId
-  if (!currentBaseUrl) {
-    throw new Error('baseUrl is required for OpenAPI parsing. Set baseUrl in your source configuration.');
-  }
-  
   const pathParts = pathStr.split('/').filter(Boolean);
   const resource = pathParts[0] || 'misc';
   const slug = operationId
     .replace(/_handler$/, '')
     .replace(/_proxy$/, '')
     .replace(/_/g, '-');
-  
-  // Use currentBaseUrl for fallback URL generation
-  return `${currentBaseUrl}/${resource}/${slug}`;
+
+  return `${ctx.baseUrl}/${resource}/${slug}`;
 }
 
 // =============================================================================
@@ -534,41 +557,45 @@ function getDocUrl(operationId: string, method: string, pathStr: string): string
 
 /**
  * Create an API documentation chunk for an endpoint
+ *
+ * @param ctx - Parsing context (null for standalone loader usage)
  */
 function createApiDocChunk(
   method: string,
   pathStr: string,
   operation: Operation,
   schemas: Record<string, SchemaObject>,
-  servers: Array<{ url: string; description: string }>
+  servers: Array<{ url: string; description: string }>,
+  ctx: ParsingContext | null = null
 ): DocChunk {
   const operationId = operation.operationId || `${method}_${pathStr.replace(/\//g, '_')}`;
-  const docUrl = getDocUrl(operationId, method, pathStr);
+  // Use context for URL lookup, or generate a placeholder if no context
+  const docUrl = ctx ? getDocUrl(ctx, operationId, method, pathStr) : '';
   const tag = operation.tags?.[0] || 'API';
-  
+
   const actionName = operationId
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-  
+
   // Build the API doc content
   const lines: string[] = [];
-  
+
   lines.push(`## ${method.toUpperCase()} ${pathStr}`);
   lines.push('');
-  
+
   lines.push(`### Description`);
   lines.push(operation.summary || operation.description || `${actionName} endpoint.`);
   lines.push('');
-  
+
   lines.push(`### Method`);
   lines.push(method.toUpperCase());
   lines.push('');
-  
+
   lines.push(`### Endpoint`);
   lines.push(pathStr);
   lines.push('');
-  
+
   if (servers.length > 0) {
     lines.push('#### Base URLs');
     for (const server of servers) {
@@ -576,16 +603,16 @@ function createApiDocChunk(
     }
     lines.push('');
   }
-  
+
   lines.push(`### Parameters`);
   lines.push(formatParameters(operation.parameters || []));
   lines.push('');
-  
+
   // Request body
   if (operation.requestBody?.content?.['application/json']) {
     const jsonContent = operation.requestBody.content['application/json'];
     const bodySchema = jsonContent.schema;
-    
+
     lines.push(`### Request Body`);
     if (bodySchema) {
       if (bodySchema.$ref) {
@@ -596,8 +623,9 @@ function createApiDocChunk(
       }
     }
     lines.push('');
-    
-    const requestExample = jsonContent.example || generateExample(bodySchema as SchemaObject, schemas);
+
+    const requestExample =
+      jsonContent.example || generateExample(bodySchema as SchemaObject, schemas);
     if (requestExample) {
       lines.push(`### Request Example`);
       lines.push('```json');
@@ -606,23 +634,27 @@ function createApiDocChunk(
       lines.push('');
     }
   }
-  
+
   // Responses
   if (operation.responses) {
     lines.push(`### Response`);
-    
+
     for (const [code, response] of Object.entries(operation.responses)) {
-      const statusType = code.startsWith('2') ? 'Success' : code.startsWith('4') ? 'Client Error' : 'Error';
+      const statusType = code.startsWith('2')
+        ? 'Success'
+        : code.startsWith('4')
+          ? 'Client Error'
+          : 'Error';
       lines.push(`#### ${statusType} Response (${code})`);
-      
+
       if (response.description) {
         lines.push(response.description);
       }
-      
+
       if (response.content?.['application/json']) {
         const jsonContent = response.content['application/json'];
         const respSchema = jsonContent.schema;
-        
+
         if (respSchema) {
           if (respSchema.$ref) {
             const resolved = resolveSchema(respSchema.$ref, schemas, new Set());
@@ -633,8 +665,9 @@ function createApiDocChunk(
             if (props) lines.push(props);
           }
         }
-        
-        const responseExample = jsonContent.example || generateExample(respSchema as SchemaObject, schemas);
+
+        const responseExample =
+          jsonContent.example || generateExample(respSchema as SchemaObject, schemas);
         if (responseExample && code.startsWith('2')) {
           lines.push('');
           lines.push(`#### Response Example`);
@@ -646,9 +679,9 @@ function createApiDocChunk(
       lines.push('');
     }
   }
-  
+
   const content = lines.join('\n').trim();
-  
+
   return {
     id: `api/${operationId}`,
     documentPath: `api-reference/${tag.toLowerCase()}/${operationId.replace(/_/g, '-')}`,
@@ -667,33 +700,36 @@ function createApiDocChunk(
 
 /**
  * Create a code sample chunk
+ *
+ * @param ctx - Parsing context for URL resolution
  */
 function createCodeSampleChunk(
   method: string,
   pathStr: string,
   operation: Operation,
-  sample: CodeSample
+  sample: CodeSample,
+  ctx: ParsingContext
 ): DocChunk {
   const operationId = operation.operationId || `${method}_${pathStr.replace(/\//g, '_')}`;
-  const docUrl = getDocUrl(operationId, method, pathStr);
+  const docUrl = getDocUrl(ctx, operationId, method, pathStr);
   const tag = operation.tags?.[0] || 'API';
-  
+
   const actionName = operationId
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-  
+
   const title = `${actionName} - ${sample.lang} Example`;
-  
+
   const lines: string[] = [];
   lines.push(`${sample.lang} code example for \`${method.toUpperCase()} ${pathStr}\``);
   lines.push('');
   lines.push('```' + sample.lang.toLowerCase());
   lines.push(sample.source);
   lines.push('```');
-  
+
   const content = lines.join('\n').trim();
-  
+
   return {
     id: `api/${operationId}/code/${sample.lang.toLowerCase()}`,
     documentPath: `api-reference/${tag.toLowerCase()}/${operationId.replace(/_/g, '-')}`,
@@ -723,34 +759,39 @@ function createCodeSampleChunk(
  * @param urlMappingDir - Optional directory name containing MDX files with openapi frontmatter
  */
 export function parseOpenApiSpec(
-  openApiPath: string, 
-  baseUrl: string, 
-  docsRoot?: string, 
+  openApiPath: string,
+  baseUrl: string,
+  docsRoot?: string,
   urlMappingDir?: string,
   chunkConfig: ChunkConfig = DEFAULT_CHUNK_CONFIG
 ): DocChunk[] {
   if (!baseUrl) {
-    throw new Error('baseUrl is required for OpenAPI parsing. Set baseUrl in your source configuration.');
+    throw new Error(
+      'baseUrl is required for OpenAPI parsing. Set baseUrl in your source configuration.'
+    );
   }
-  
-  // Set the base URL for fallback URL generation
-  currentBaseUrl = baseUrl;
-  
+
+  // Create parsing context (replaces global state)
+  const ctx: ParsingContext = {
+    baseUrl,
+    docUrlMap: new Map<string, string>(),
+  };
+
   // Build URL map from actual folder structure if both docsRoot and urlMappingDir provided
   if (docsRoot && urlMappingDir) {
-    buildDocUrlMap(docsRoot, urlMappingDir, baseUrl);
+    ctx.docUrlMap = buildDocUrlMap(docsRoot, urlMappingDir, baseUrl);
   }
-  
+
   const content = fs.readFileSync(openApiPath, 'utf-8');
   const spec: OpenAPISpec = parseYaml(content);
-  
+
   const chunks: DocChunk[] = [];
   const schemas = spec.components?.schemas || {};
   const servers = spec.servers || [];
-  
+
   let endpointCount = 0;
   let codeSampleCount = 0;
-  
+
   // Process each path
   for (const [pathStr, pathItem] of Object.entries(spec.paths)) {
     const methods: Array<[string, Operation | undefined]> = [
@@ -760,19 +801,19 @@ export function parseOpenApiSpec(
       ['patch', pathItem.patch],
       ['delete', pathItem.delete],
     ];
-    
+
     for (const [method, operation] of methods) {
       if (!operation) continue;
-      
+
       // Create API documentation chunk
-      const apiChunk = createApiDocChunk(method, pathStr, operation, schemas, servers);
+      const apiChunk = createApiDocChunk(method, pathStr, operation, schemas, servers, ctx);
       chunks.push(apiChunk);
       endpointCount++;
-      
+
       // Create code sample chunks
       if (operation['x-codeSamples']) {
         for (const sample of operation['x-codeSamples']) {
-          const codeChunk = createCodeSampleChunk(method, pathStr, operation, sample);
+          const codeChunk = createCodeSampleChunk(method, pathStr, operation, sample, ctx);
           chunks.push(codeChunk);
           codeSampleCount++;
         }
@@ -818,7 +859,7 @@ export class OpenAPISpecLoader {
   lookupEndpoint(method: string, apiPath: string): string | null {
     const spec = this.load();
     const methodLower = method.toLowerCase() as keyof PathItem;
-    
+
     // Find the path item
     let pathItem = spec.paths[apiPath];
     if (!pathItem) {
@@ -829,7 +870,7 @@ export class OpenAPISpecLoader {
         return null;
       }
     }
-    
+
     const operation = pathItem[methodLower];
     if (!operation) {
       return null;
@@ -843,4 +884,3 @@ export class OpenAPISpecLoader {
     return chunk.content;
   }
 }
-
