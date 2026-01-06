@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "my-docs-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Durable Objects for MCP state management
+  "migrations": [
+    {
+      "new_sqlite_classes": ["ContextMCP"],
+      "tag": "v1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "ContextMCP",
+        "name": "MCP_OBJECT"
+      }
+    ]
+  },
+
+  // Environment variables - customize these for your project
+  "vars": {
+    "SERVER_NAME": "my-docs-mcp",
+    "SERVER_DESCRIPTION": "Search documentation using semantic search",
+    "PINECONE_INDEX_NAME": "my-docs-mcp",
+    "EMBEDDING_MODEL": "text-embedding-3-large",
+    "DEFAULT_TOP_K": "10",
+    "MAX_TOP_K": "50"
+  },
+
+  // Enable observability
+  "observability": {
+    "enabled": true
+  }
+}
+
