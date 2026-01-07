@@ -90,8 +90,8 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
               <div className="flex items-center gap-2 rounded-lg bg-zinc-950 border border-white/10 p-1 pl-4 pr-1 font-mono text-sm text-zinc-400 min-w-[320px] shadow-2xl">
                 <span className="mr-0 text-[#60A5FA]">$</span>
-                <span className="flex-1 text-left">git clone https://github.com/dodopayments/contextmcp.git</span>
-                <CopyButton text="git clone https://github.com/dodopayments/contextmcp.git" />
+                <span className="flex-1 text-left">npx contextmcp init</span>
+                <CopyButton text="npx contextmcp init" />
               </div>
               <Link
                 href="https://github.com/dodopayments/contextmcp"
