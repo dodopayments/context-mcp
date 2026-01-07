@@ -9,8 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@types/mdx": "^2.0.13",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.26",
+    "fumadocs-core": "^16.4.1",
+    "fumadocs-mdx": "^14.2.3",
+    "fumadocs-ui": "^16.4.1",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",
@@ -25,6 +29,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }

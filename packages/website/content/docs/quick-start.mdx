@@ -1,0 +1,139 @@
+---
+title: Quick Start
+description: Get ContextMCP running in 5 minutes
+---
+
+## Prerequisites
+
+- Node.js 18+
+- OpenAI API key
+- Pinecone account + API key
+
+## 1. Initialize
+
+```bash
+npx contextmcp init
+cd your-project-name
+```
+
+## 2. Configure
+
+```bash
+cp config.example.yaml config.yaml
+cp .env.example .env
+```
+
+Edit `.env` with your keys:
+
+```bash
+OPENAI_API_KEY=sk-...
+PINECONE_API_KEY=...
+GITHUB_TOKEN=ghp_...  # Optional: for private repos
+```
+
+Edit `config.yaml` to point to your docs:
+
+```yaml
+vectordb:
+  provider: pinecone
+  indexName: my-docs
+  pinecone:
+    cloud: aws
+    region: us-east-1
+
+embeddings:
+  provider: openai
+  model: text-embedding-3-large
+  dimensions: 3072
+
+sources:
+  - name: docs
+    type: github
+    repository: your-org/your-repo
+    path: docs/
+    parser: mdx
+```
+
+See [Configuration](/docs/configuration) for all options.
+
+## 3. Index
+
+```bash
+npm run reindex
+```
+
+## 4. Deploy
+
+```bash
+cd cloudflare-worker
+wrangler secret put OPENAI_API_KEY
+wrangler secret put PINECONE_API_KEY
+npm run deploy
+```
+
+Your server is live at `https://contextmcp.your-subdomain.workers.dev`
+
+See [Deployment](/docs/deployment) for GitHub Actions auto-reindex.
+
+## 5. Connect Your Editor
+
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "my-docs": {
+      "url": "https://your-worker.workers.dev/mcp"
+    }
+  }
+}
+```
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "my-docs": {
+      "serverUrl": "https://your-worker.workers.dev/mcp"
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "my-docs": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@latest", "https://your-worker.workers.dev/mcp"]
+    }
+  }
+}
+```
+
+Restart your editor. Done!
+
+## Test It
+
+```bash
+# Health check
+curl https://your-worker.workers.dev/health
+
+# Search
+curl "https://your-worker.workers.dev/search?query=authentication"
+```
+
+## Next Steps
+
+- [Configuration](/docs/configuration) - Customize sources, parsers, chunking
+- [Deployment](/docs/deployment) - Auto-reindex, custom domains
+- [Integrations](/docs/integrations) - REST API for custom agents
