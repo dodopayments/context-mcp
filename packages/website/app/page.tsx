@@ -8,7 +8,6 @@ import { useState, useEffect } from "react";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { cn } from "@/lib/utils";
-import { ArchitectureDiagram } from "@/components/architecture-diagram";
 import { FaqSection } from "@/components/faq";
 import { HeroVisual } from "@/components/hero-visual";
 import { FeaturesBento } from "@/components/features-bento";
@@ -60,23 +59,17 @@ function IntegrationNode({ icon: Icon, label, subLabel }: { icon: any, label: st
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-black overflow-x-hidden selection:bg-[#60A5FA] selection:text-black">
-      <div className="fixed inset-0 z-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none mask-gradient-to-b" />
+    <main className="min-h-screen overflow-x-hidden selection:bg-[#60A5FA] selection:text-black bg-black">
+      {/* Black base layer */}
+      <div className="fixed inset-0 bg-black" />
+      {/* Grid pattern layer */}
+      <div className="fixed inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
       <Navbar />
 
       {/* --- HERO SECTION --- */}
       <section className="relative pt-32 pb-12 md:pt-48 md:pb-32 px-6">
         <div className="mx-auto max-w-7xl relative z-10">
           <div className="flex flex-col items-center text-center max-w-6xl mx-auto mb-20">
-
-            {/* Badge */}
-            {/* <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-[11px] font-mono font-medium text-zinc-400 backdrop-blur-sm">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#A78BFA] opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#A78BFA]"></span>
-              </span>
-              <span>Self-hosted MCP Server</span>
-            </div> */}
 
             <h1 className="text-4xl md:text-4xl lg:text-7xl font-bold tracking-tighter text-white mb-8">
               Self-hosted alternative to <br /> <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] animate-gradient bg-[length:200%_auto]">Context7</span>
@@ -94,7 +87,7 @@ export default function Home() {
                 <CopyButton text="npx contextmcp init" />
               </div>
               <Link
-                href="https://github.com/dodopayments/contextmcp"
+                href="/docs"
                 className="h-10 px-6 rounded-lg bg-white text-black font-bold flex items-center justify-center hover:bg-zinc-200 transition-colors"
               >
                 Documentation
@@ -102,15 +95,14 @@ export default function Home() {
             </div>
           </div>
 
-          {/* HERO VISUAL */}
           <HeroVisual />
 
         </div>
       </section>
 
 
-      {/* --- SENTRA CASE STUDY (Feature Highlight) --- */}
-      <section className="py-24 border-y border-white/5 bg-[#050505]">
+      {/* --- SENTRA CASE STUDY --- */}
+      <section className="py-24 border-y border-white/5">
         <div className="mx-auto max-w-7xl px-6">
           <div className="bg-gradient-to-br from-zinc-900 to-black rounded-3xl border border-white/10 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#60A5FA] opacity-[0.03] blur-[100px] pointer-events-none rounded-full" />
@@ -158,26 +150,9 @@ export default function Home() {
       </section>
 
       {/* --- FEATURES BENTO --- */}
-      <section className="py-24 px-6 relative z-10 border-t border-white/5 bg-[#050505]">
+      <section className="py-24 px-6 relative z-10 border-t border-white/5">
         <FeaturesBento />
       </section>
-
-      {/* --- ARCHITECTURE DIAGRAM --- */}
-
-      {/* <section className="py-24 px-6 relative z-10">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-12 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              How It Works
-            </h2>
-            <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-              From raw documentation to semantic search in four simple steps.
-            </p>
-          </div>
-
-          <ArchitectureDiagram />
-        </div>
-      </section> */}
 
       <FaqSection />
       <Footer />

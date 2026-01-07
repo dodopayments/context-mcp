@@ -64,7 +64,7 @@ export function FaqSection() {
     const [openIndex, setOpenIndex] = useState<number | null>(0);
 
     return (
-        <section className="py-24 px-6 relative z-10 bg-[#050505] border-t border-white/5">
+        <section className="py-24 px-6 relative z-10 border-t border-white/5">
             <div className="mx-auto max-w-3xl">
                 <div className="mb-12 text-center">
                     <h2 className="text-3xl font-bold text-white mb-4">Frequently Asked Questions</h2>

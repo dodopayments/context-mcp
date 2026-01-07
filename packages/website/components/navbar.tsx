@@ -31,7 +31,7 @@ export function Navbar() {
                         <span>Star</span>
                     </Link>
                     <Link
-                        href="https://github.com/dodopayments/contextmcp"
+                        href="/docs"
                         target="_blank"
                         className="hidden sm:flex h-9 items-center rounded-full bg-[#60A5FA] px-5 text-sm font-semibold text-black transition-transform hover:scale-105 active:scale-95"
                     >
