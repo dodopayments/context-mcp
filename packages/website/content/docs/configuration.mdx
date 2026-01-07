@@ -1,0 +1,169 @@
+---
+title: Configuration
+description: ContextMCP is configured through a single config.yaml file in your project root.
+---
+
+## Overview
+
+The configuration file has four main sections:
+
+- **vectordb** - Where to store embeddings
+- **embeddings** - Which model to use
+- **sources** - What documentation to index
+- **chunking** - How to split content
+
+## Full Example
+
+```yaml
+vectordb:
+  provider: pinecone
+  indexName: my-company-docs
+  namespace: production
+  pinecone:
+    cloud: aws
+    region: us-east-1
+
+embeddings:
+  provider: openai
+  model: text-embedding-3-large
+  dimensions: 3072
+
+sources:
+  - name: main-docs
+    displayName: "Documentation"
+    type: github
+    repository: myorg/docs
+    branch: main
+    parser: mdx
+    baseUrl: https://docs.example.com
+    skipDirs:
+      - node_modules
+      - .git
+
+  - name: api-reference
+    displayName: "API Reference"
+    type: github
+    repository: myorg/api
+    path: openapi
+    parser: openapi
+    baseUrl: https://docs.example.com/api
+
+chunking:
+  maxChunkSize: 2000
+  minChunkSize: 250
+  idealChunkSize: 1000
+
+reindex:
+  clearBeforeReindex: true
+  batchSize: 100
+```
+
+## Vector Database
+
+Currently supports Pinecone. Your embeddings are stored here.
+
+```yaml
+vectordb:
+  provider: pinecone
+  indexName: my-docs # Your Pinecone index name
+  namespace: production # Optional: namespace within index
+  pinecone:
+    cloud: aws # aws or gcp
+    region: us-east-1 # Your Pinecone region
+```
+
+## Embeddings
+
+Configure the model used to generate vector embeddings.
+
+```yaml
+embeddings:
+  provider: openai
+  model: text-embedding-3-large # or text-embedding-3-small
+  dimensions: 3072 # 3072 for large, 1536 for small
+```
+
+**Cost note:** `text-embedding-3-large` costs ~$0.13 per 1M tokens. For a typical docs site (~500 files), expect ~$0.50-1.00 per full reindex.
+
+## Sources
+
+Define where your documentation lives. You can have multiple sources.
+
+### GitHub Repository
+
+```yaml
+sources:
+  - name: docs # Unique identifier
+    displayName: "My Docs" # Human-readable name
+    type: github
+    repository: owner/repo # GitHub repo
+    branch: main # Optional, defaults to main
+    path: docs/ # Optional, subdirectory
+    parser: mdx # mdx, markdown, or openapi
+    baseUrl: https://docs.example.com
+    skipDirs:
+      - node_modules
+      - .git
+      - images
+    skipFiles:
+      - CHANGELOG.md
+```
+
+### Parser Types
+
+| Parser     | Use For                 | Features                                    |
+| ---------- | ----------------------- | ------------------------------------------- |
+| `mdx`      | MDX/Markdown docs       | Extracts frontmatter, preserves code blocks |
+| `markdown` | Plain markdown, READMEs | Simple parsing, language hints              |
+| `openapi`  | Swagger/OpenAPI specs   | Generates docs from API definitions         |
+
+### Language Hints
+
+When indexing SDK repositories, add a language hint:
+
+```yaml
+- name: python-sdk
+  repository: myorg/python-sdk
+  parser: markdown
+  language: python # Helps AI understand context
+```
+
+## Chunking
+
+Control how documents are split for indexing.
+
+```yaml
+chunking:
+  maxChunkSize: 2000 # Maximum characters per chunk
+  minChunkSize: 250 # Minimum (avoids tiny chunks)
+  idealChunkSize: 1000 # Target size
+```
+
+**Note:** ContextMCP uses AST-aware chunking. Code blocks and tables are never split mid-content, regardless of size limits.
+
+## Reindex Settings
+
+```yaml
+reindex:
+  clearBeforeReindex: true # Clear index before reindexing
+  batchSize: 100 # Vectors uploaded per batch
+```
+
+## Using YAML Anchors
+
+For shared configuration across sources:
+
+```yaml
+x-common-skip: &commonSkip
+  - node_modules
+  - .git
+  - dist
+  - __pycache__
+
+sources:
+  - name: docs
+    skipDirs: *commonSkip
+
+  - name: sdk
+    skipDirs: *commonSkip
+```

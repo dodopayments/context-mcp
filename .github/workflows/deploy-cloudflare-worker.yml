@@ -7,7 +7,7 @@ on:
     branches:
       - main
     paths:
-      - 'cloudflare-worker/**'
+      - 'deployments/dodopayments/**'
       - '.github/workflows/deploy-cloudflare-worker.yml'
 
   workflow_dispatch:
@@ -29,15 +29,14 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        working-directory: cloudflare-worker
-        run: npm install
+        run: cd deployments/dodopayments/cloudflare-worker && npm install
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: cloudflare-worker
+          workingDirectory: deployments/dodopayments/cloudflare-worker
 
       - name: Generate deploy summary
         run: |

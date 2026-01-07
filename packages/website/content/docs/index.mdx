@@ -1,0 +1,70 @@
+---
+title: Introduction
+description: Self-hosted MCP server for your documentation
+---
+
+**ContextMCP** is a self-hosted alternative to Context7. It allows your AI Agents to search across your documentation, repositories and API references using the [Model Context Protocol](https://modelcontextprotocol.io/) or REST API endpoint.
+
+## Features
+
+- **Self-Hosted** - Your docs stay on your infrastructure
+- **Semantic Search** - Natural language queries with vector embeddings
+- **MCP Native** - Works with Cursor, Windsurf, Claude Desktop out of the box
+- **Fast** - Cloudflare Workers edge deployment
+- **Fully Configurable** - Simple YAML configuration, no code changes needed
+- **Easily Extendable** - Add new parsers and chunkers or modify existing ones with ease
+
+## How It Works
+
+ContextMCP follows a simple workflow:
+
+1. **Configure** - Define your documentation sources in `config.yaml`
+2. **Index** - Run `npm run reindex` to fetch, parse, and embed your docs
+3. **Deploy** - Deploy the Cloudflare Worker to serve search requests
+4. **Connect** - Configure your AI Agents to use the MCP server
+
+The system:
+
+- Fetches documentation from GitHub, local files, or URLs
+- Parses MDX, Markdown, or OpenAPI formats
+- Chunks content intelligently for optimal retrieval
+- Generates embeddings using OpenAI
+- Stores vectors in Pinecone for fast semantic search
+- Serves results via MCP protocol and REST API
+
+## Architecture
+
+```
+┌─────────────┐
+│   Sources   │  GitHub, Local, URL
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   Parsers   │  MDX, Markdown, OpenAPI
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   Chunkers  │  Split into optimal sizes
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ Embeddings  │  OpenAI text-embedding-3-large
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│  Pinecone   │  Vector storage & search
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   Worker    │  Cloudflare Workers (MCP + REST)
+└─────────────┘
+```
+
+## Next Steps
+
+Ready to get started? Follow the [Quick Start](/docs/quick-start) guide to set up ContextMCP in minutes.

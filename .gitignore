@@ -3,10 +3,11 @@ node_modules/
 
 # Build output
 dist/
+.next/
 
-# Wrangler generated types
-cloudflare-worker/worker-configuration.d.ts
-cloudflare-worker/.wrangler/
+# Wrangler
+packages/template/cloudflare-worker/.wrangler/
+packages/template/cloudflare-worker/worker-configuration.d.ts
 
 # Environment
 .env

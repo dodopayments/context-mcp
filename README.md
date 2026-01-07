@@ -1,281 +1,98 @@
-# Dodo Knowledge MCP
+# ContextMCP
 
-An MCP (Model Context Protocol) server providing semantic search over Dodo Payments documentation. Powers AI assistants with accurate, up-to-date context from docs, SDKs, and API references.
+**Self-hosted MCP server for your documentation.** Index your documentation from across the sources and serve it via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and REST API.
 
-## Architecture
+## Quick Start
 
-```
-                                    Daily Reindex (GitHub Actions)
-                                              |
-                                              v
-+------------------+     +------------------+     +------------------+
-|   Source Repos   |     |     Parsers      |     |     Pinecone     |
-|                  |     |                  |     |                  |
-|  - dodo-docs     | --> |  - MDX/OpenAPI   | --> |  Vector Store    |
-|  - SDKs (10+)    |     |  - SDK markdowns |     |  (3072 dims)     |
-|  - billingsdk    |     |  - BillingSDK    |     |                  |
-+------------------+     +------------------+     +--------+---------+
-                                                          |
-                                                          v
-                                              +-----------+-----------+
-                                              |  Cloudflare Worker    |
-                                              |                       |
-                                              |  /mcp  - MCP (HTTP)   |
-                                              |  /search - REST       |
-                                              +-----------------------+
-```
+```bash
+# Scaffold a new project
+npx contextmcp init my-docs-mcp
 
-## Remote MCP Server
+# Follow the prompts, then:
+cd my-docs-mcp
+npm install
 
-The MCP server is deployed on Cloudflare Workers at:
+# Configure your API keys
+cp .env.example .env
+# Edit .env with your PINECONE_API_KEY and OPENAI_API_KEY
 
-```
-https://knowledge.dodopayments.com/mcp
+# Configure your documentation sources
+# Edit config.yaml
+
+# Index your documentation
+npm run reindex
+
+# Edit the cloudflare-worker
+# Deploy the MCP server
+cd cloudflare-worker
+npm install
+npm run deploy
 ```
 
-### Cursor
+## What is ContextMCP?
 
-Edit `~/.cursor/mcp.json`:
+ContextMCP creates a searchable knowledge base from your documentation that AI assistants can query via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
 
-```json
-{
-  "mcpServers": {
-    "dodo-knowledge-mcp": {
-      "url": "https://knowledge.dodopayments.com/mcp"
-    }
-  }
-}
+### Supported Content Types
+
+| Parser     | Content Types         | Examples                       |
+| ---------- | --------------------- | ------------------------------ |
+| `mdx`      | MDX/JSX documentation | Mintlify, Fumadocs, Docusaurus |
+| `markdown` | Plain Markdown files  | READMEs, CHANGELOGs            |
+| `openapi`  | OpenAPI/Swagger specs | API reference docs             |
+
+### How It Works
+
+1. **Parse** - Extract content from your docs, APIs, and READMEs
+2. **Chunk** - Split into semantic chunks optimized for search
+3. **Embed** - Generate embeddings using OpenAI
+4. **Store** - Upload to Pinecone vector database
+5. **Search** - Query via MCP from AI assistants
+
+## Repository Structure
+
+```
+contextmcp/
+├── packages/
+│   ├── cli/              # npx contextmcp (npm package)
+│   ├── template/         # Project template (scaffolded to users)
+│   └── website/          # contextmcp.ai documentation site
+└── deployments/
+    └── dodopayments/     # Dodo Payments specific deployment
 ```
 
-### Windsurf
+## Packages
 
-Edit `~/.codeium/windsurf/mcp_config.json`:
+| Package             | Description          | Published            |
+| ------------------- | -------------------- | -------------------- |
+| `packages/cli`      | CLI scaffolding tool | ✅ npm: `contextmcp` |
+| `packages/template` | Project template     | (copied by CLI)      |
+| `packages/website`  | Documentation site   | (deployed to Vercel) |
 
-```json
-{
-  "mcpServers": {
-    "dodo-knowledge-mcp": {
-      "serverUrl": "https://knowledge.dodopayments.com/mcp"
-    }
-  }
-}
-```
+## Development
 
-### Claude Desktop
+### Prerequisites
 
-Edit your config file:
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "dodo-knowledge-mcp": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote@latest", "https://knowledge.dodopayments.com/mcp"]
-    }
-  }
-}
-```
-
-## Local Development
+- Node.js 18+
 
 ### Setup
 
 ```bash
-# Install dependencies
+# Install all dependencies
 npm install
 
-# Set up environment variables
-cp .env.example .env
-# Add OPENAI_API_KEY and PINECONE_API_KEY
+# Development
+npm run dev:website     # Run website locally
+npm run dev:cli         # Watch CLI for changes
+
+# Build
+npm run build:website   # Build website
+npm run build:cli       # Build CLI
+
+# Type checking
+npm run typecheck       # Check all packages
 ```
 
-### Indexing Documentation
+## Documentation
 
-```bash
-# Full reindex (parse + embed all sources)
-npm run reindex
-
-# Or run individual steps:
-npm run parse:docs        # Parse main documentation
-npm run parse:sdk         # Parse SDK repositories
-npm run parse:billingsdk  # Parse BillingSDK
-
-npm run embed:docs        # Embed docs to Pinecone
-npm run embed:sdk         # Embed SDKs to Pinecone
-npm run embed:billingsdk  # Embed BillingSDK to Pinecone
-```
-
-### Cloudflare Worker Development
-
-```bash
-cd cloudflare-worker
-
-# Install dependencies
-npm install
-
-# Set secrets
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put PINECONE_API_KEY
-
-# Local development
-npm run dev
-
-# Deploy
-npm run deploy
-```
-
-## Environment Variables
-
-### Root Project (Indexing Scripts)
-
-Required for running indexing and embedding scripts locally:
-
-| Variable           | Required | Default | Description                                                       |
-| ------------------ | -------- | ------- | ----------------------------------------------------------------- |
-| `OPENAI_API_KEY`   | **Yes**  | -       | OpenAI API key for generating embeddings (text-embedding-3-large) |
-| `PINECONE_API_KEY` | **Yes**  | -       | Pinecone API key for vector storage and search                    |
-
-### Cloudflare Worker (Runtime)
-
-#### Secrets (set via `wrangler secret put`)
-
-| Variable           | Required | Description                         |
-| ------------------ | -------- | ----------------------------------- |
-| `OPENAI_API_KEY`   | **Yes**  | OpenAI API key for query embeddings |
-| `PINECONE_API_KEY` | **Yes**  | Pinecone API key for vector search  |
-
-#### Configuration Variables (set in `wrangler.jsonc`)
-
-| Variable              | Required | Default                  | Description                      |
-| --------------------- | -------- | ------------------------ | -------------------------------- |
-| `PINECONE_INDEX_NAME` | No       | `dodo-knowledge-mcp`     | Name of the Pinecone index       |
-| `EMBEDDING_MODEL`     | No       | `text-embedding-3-large` | OpenAI embedding model to use    |
-| `DEFAULT_TOP_K`       | No       | `10`                     | Default number of search results |
-| `MAX_TOP_K`           | No       | `50`                     | Maximum allowed search results   |
-
-## Available Scripts
-
-| Script                     | Description                              |
-| -------------------------- | ---------------------------------------- |
-| `npm run parse:docs`       | Parse main documentation (MDX + OpenAPI) |
-| `npm run parse:sdk`        | Parse SDK repositories                   |
-| `npm run parse:billingsdk` | Parse BillingSDK documentation           |
-| `npm run embed:docs`       | Embed main docs to Pinecone              |
-| `npm run embed:sdk`        | Embed SDK docs to Pinecone               |
-| `npm run embed:billingsdk` | Embed BillingSDK to Pinecone             |
-| `npm run clean:vectors`    | Clear all vectors from Pinecone          |
-| `npm run reindex`          | Full reindex (clear + parse + embed all) |
-
-## Documentation Sources
-
-| Source     | Repository                    | Content                                          |
-| ---------- | ----------------------------- | ------------------------------------------------ |
-| Docs       | `dodopayments/dodo-docs`      | API reference, guides, features, OpenAPI spec    |
-| SDK        | `dodopayments/dodopayments-*` | TypeScript, Python, Go, PHP, Java, Ruby, C# SDKs |
-| BillingSDK | `dodopayments/billingsdk`     | React billing components                         |
-
-## API Endpoints
-
-The Cloudflare Worker exposes:
-
-| Endpoint  | Method    | Description                          |
-| --------- | --------- | ------------------------------------ |
-| `/mcp`    | POST      | MCP Streamable HTTP                  |
-| `/search` | GET, POST | REST API for direct search           |
-| `/health` | GET       | Health check                         |
-| `/`       | GET       | Landing page with setup instructions |
-
-### REST API Usage
-
-```bash
-# GET request with query params
-curl "https://knowledge.dodopayments.com/search?query=how+to+create+a+payment&limit=5"
-
-# POST request with JSON body
-curl -X POST https://knowledge.dodopayments.com/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "how to create a payment", "limit": 5}'
-```
-
-## MCP Tool: search_docs
-
-The server exposes a single tool for semantic search:
-
-```typescript
-search_docs({
-  query: string, // What to search for
-  limit?: number, // Results count (default: 5, max: 20)
-});
-```
-
-Example queries:
-
-- "how to create a payment"
-- "webhook signature verification typescript"
-- "pricing table component react"
-- "subscription lifecycle events"
-
-## Project Structure
-
-```
-dodo-knowledge-mcp/
-├── cloudflare-worker/          # Cloudflare Worker (MCP + REST API)
-│   ├── src/index.ts            # Worker entry point
-│   ├── wrangler.jsonc          # Wrangler configuration
-│   └── package.json
-├── src/
-│   ├── embeddings/             # Embedding generation
-│   │   ├── core.ts             # Pinecone/OpenAI utilities
-│   │   └── embed.ts            # CLI embedding script
-│   ├── parser/
-│   │   ├── chunkers/           # Source-specific chunkers
-│   │   ├── core/               # Shared parsing utilities
-│   │   └── parse-*.ts          # Parse scripts
-│   ├── config/                 # Constants and env validation
-│   └── types/                  # TypeScript interfaces
-├── scripts/
-│   ├── reindex.ts              # Daily reindex orchestration
-│   └── clean-vectors.ts        # Pinecone cleanup utility
-├── data/                       # Generated index files (gitignored)
-└── .github/workflows/
-    └── daily-reindex.yml       # Automated daily reindex
-```
-
-## Technical Details
-
-### Search Pipeline
-
-1. **Vector Search**: Fetches top 30 candidates from Pinecone using cosine similarity
-2. **Reranking**: Uses Pinecone's `pinecone-rerank-v0` model to reorder results by semantic relevance
-3. **Return**: Top N results (default: 5, max: 20) after reranking
-
-### Stack
-
-- **Embedding Model**: `text-embedding-3-large` (3072 dimensions)
-- **Vector Store**: Pinecone (serverless, AWS us-east-1)
-- **Reranker**: Pinecone Inference API (`pinecone-rerank-v0`)
-- **Chunking**: Semantic splitting by headings
-- **Index Name**: `dodo-knowledge-mcp`
-- **Runtime**: Cloudflare Workers with Durable Objects
-
-## GitHub Actions
-
-The repository includes a workflow for automated daily reindexing:
-
-- Runs daily at 2 AM UTC
-- Clears existing vectors
-- Parses all documentation sources
-- Generates and uploads new embeddings
-- Can be triggered manually via workflow_dispatch
-
-Required secrets:
-
-- `OPENAI_API_KEY`
-- `PINECONE_API_KEY`
-
-## License
-
-Proprietary - Dodo Payments
+Visit [contextmcp.ai/docs](https://contextmcp.ai/docs) for full documentation.

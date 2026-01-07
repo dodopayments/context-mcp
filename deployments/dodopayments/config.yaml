@@ -1,0 +1,239 @@
+﻿# ContextMCP Configuration for Dodo Payments
+# Full configuration matching the original parse scripts
+
+vectordb:
+  provider: pinecone
+  indexName: dodo-knowledge-mcp
+  pinecone:
+    cloud: aws
+    region: us-east-1
+
+embeddings:
+  provider: openai
+  model: text-embedding-3-large
+  dimensions: 3072
+
+# =============================================================================
+# REUSABLE SKIP PATTERNS (YAML Anchors)
+# =============================================================================
+# Define common skip patterns that can be reused with <<: *anchorName
+
+x-sdk-skip-dirs: &sdkSkipDirs
+  - .git
+  - .github
+  - node_modules
+  - vendor
+  - dist
+  - build
+  - coverage
+  - __pycache__
+  - .venv
+  - venv
+  # Internal/test directories
+  - internal
+  - test
+  - tests
+  - __tests__
+  - spec
+
+x-sdk-skip-files: &sdkSkipFiles
+  - SECURITY.md
+  - CODE_OF_CONDUCT.md
+  - ISSUE_TEMPLATE.md
+  - PULL_REQUEST_TEMPLATE.md
+  - LICENSE.md
+  - CONTRIBUTING.md
+  - API.md
+
+sources:
+  # =============================================================================
+  # MAIN DOCUMENTATION (MDX)
+  # =============================================================================
+  - name: dodo-docs
+    displayName: 'Dodo Payments Documentation'
+    type: github
+    repository: dodopayments/dodo-docs
+    parser: mdx
+    baseUrl: https://docs.dodopayments.com
+    # Skip directories that shouldn't be indexed
+    skipDirs:
+      - .git
+      - .github
+      - .cursor
+      - node_modules
+      - images
+      - logo
+      - openapi        # OpenAPI spec folder (parsed separately)
+      - api-reference  # API reference pages (parsed via OpenAPI source)
+      - snippets
+      # Translations (non-English docs)
+      - ar
+      - cn
+      - de
+      - es
+      - fr
+      - hi
+      - id
+      - it
+      - ja
+      - ko
+      - pt-BR
+      - sv
+      - vi
+    skipFiles:
+      - README.md
+      - LICENSE
+      - CONTRIBUTING.md
+      - styles.css
+
+  # =============================================================================
+  # OPENAPI SPECIFICATION
+  # =============================================================================
+  - name: dodo-api
+    displayName: 'Dodo Payments API Reference'
+    type: github
+    repository: dodopayments/dodo-docs
+    path: openapi
+    parser: openapi
+    baseUrl: https://docs.dodopayments.com/api-reference
+    # Directory containing MDX files with openapi: frontmatter for URL mapping
+    urlMappingDir: api-reference
+
+  # =============================================================================
+  # BILLINGSDK DOCUMENTATION (Fumadocs MDX)
+  # =============================================================================
+  - name: billingsdk
+    displayName: 'BillingSDK Documentation'
+    type: github
+    repository: dodopayments/billingsdk
+    path: content/docs
+    parser: mdx
+    baseUrl: https://billingsdk.com/docs
+    skipDirs:
+      - .git
+      - .github
+      - node_modules
+
+  # =============================================================================
+  # SDK REPOSITORIES (Plain Markdown)
+  # =============================================================================
+  - name: sdk-typescript
+    displayName: 'TypeScript SDK'
+    type: github
+    repository: dodopayments/dodopayments-typescript
+    parser: markdown
+    language: typescript
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: sdk-ruby
+    displayName: 'Ruby SDK'
+    type: github
+    repository: dodopayments/dodopayments-ruby
+    parser: markdown
+    language: ruby
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: sdk-python
+    displayName: 'Python SDK'
+    type: github
+    repository: dodopayments/dodopayments-python
+    parser: markdown
+    language: python
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: sdk-go
+    displayName: 'Go SDK'
+    type: github
+    repository: dodopayments/dodopayments-go
+    parser: markdown
+    language: go
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: sdk-java
+    displayName: 'Java SDK'
+    type: github
+    repository: dodopayments/dodopayments-java
+    parser: markdown
+    language: java
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: sdk-php
+    displayName: 'PHP SDK'
+    type: github
+    repository: dodopayments/dodopayments-php
+    parser: markdown
+    language: php
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: sdk-csharp
+    displayName: 'C# SDK'
+    type: github
+    repository: dodopayments/dodopayments-csharp
+    parser: markdown
+    language: csharp
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: sdk-kotlin
+    displayName: 'Kotlin SDK'
+    type: github
+    repository: dodopayments/dodopayments-kotlin
+    parser: markdown
+    language: kotlin
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: dodo-adapters
+    displayName: 'Dodo Adapters'
+    type: github
+    repository: dodopayments/dodo-adapters
+    parser: markdown
+    language: typescript
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: ingestion-blueprints
+    displayName: 'Ingestion Blueprints'
+    type: github
+    repository: dodopayments/ingestion-blueprints
+    parser: markdown
+    language: typescript
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: dodo-migrate
+    displayName: 'Dodo Migrate CLI'
+    type: github
+    repository: dodopayments/dodo-migrate
+    parser: markdown
+    language: typescript
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: dodo-woocommerce
+    displayName: 'WooCommerce Plugin'
+    type: github
+    repository: dodopayments/dodo-woocommerce
+    parser: markdown
+    language: php
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+  - name: dodopayments-figma
+    displayName: 'Figma Plugin'
+    type: github
+    repository: dodopayments/dodopayments-figma
+    parser: markdown
+    language: typescript
+    skipDirs: *sdkSkipDirs
+    skipFiles: *sdkSkipFiles
+
+reindex:
+  clearBeforeReindex: true
+  batchSize: 100

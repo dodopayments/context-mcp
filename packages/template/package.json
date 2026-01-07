@@ -1,0 +1,40 @@
+{
+  "name": "@contextmcp/template",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ContextMCP project template - Self-hosted MCP server for your documentation",
+  "scripts": {
+    "reindex": "tsx scripts/reindex.ts",
+    "reindex:dry": "tsx scripts/reindex.ts --dry-run",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean:vectors": "tsx scripts/clean-vectors.ts"
+  },
+  "keywords": [
+    "mcp",
+    "documentation",
+    "semantic-search",
+    "pinecone",
+    "embeddings",
+    "cloudflare-workers"
+  ],
+  "dependencies": {
+    "@pinecone-database/pinecone": "^6.1.3",
+    "dotenv": "^17.2.3",
+    "gray-matter": "^4.0.3",
+    "openai": "^6.9.1",
+    "yaml": "^2.8.2",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "prettier": "^3.4.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

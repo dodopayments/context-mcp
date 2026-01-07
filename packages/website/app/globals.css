@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+  --accent-primary: #60A5FA;
+  --accent-secondary: #3B82F6;
+  --card-bg: #0A0A0A;
+  --border: #27272A;
+  color-scheme: dark;
+  
+  /* Fumadocs Dark Theme Variables */
+  --fd-background: 0 0% 0%;
+  --fd-foreground: 0 0% 100%;
+  --fd-muted: 0 0% 6%;
+  --fd-muted-foreground: 0 0% 60%;
+  --fd-popover: 0 0% 4%;
+  --fd-popover-foreground: 0 0% 100%;
+  --fd-card: 0 0% 4%;
+  --fd-card-foreground: 0 0% 100%;
+  --fd-border: 0 0% 15%;
+  --fd-primary: 217 91% 68%; /* Blue */
+  --fd-primary-foreground: 0 0% 0%;
+  --fd-secondary: 0 0% 10%;
+  --fd-secondary-foreground: 0 0% 100%;
+  --fd-accent: 217 91% 68%; /* Blue */
+  --fd-accent-foreground: 0 0% 0%;
+  --fd-ring: 217 91% 68%; /* Blue */
+  --fd-radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-secondary: var(--accent-secondary);
+  --color-card-bg: var(--card-bg);
+  --color-border: var(--border);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Technical Noir Texture */
+.noise-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* Glow Utilities */
+.glow-text {
+  text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);
+}
+
+.glow-box {
+  box-shadow: 0 0 40px -10px rgba(96, 165, 250, 0.2);
+}
+
+/* Glassmorphism that actually looks good */
+.glass-panel {
+  background: rgba(10, 10, 10, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Fumadocs Custom Styling */
+[data-fumadocs-layout] {
+  --fd-background: 0 0% 0% !important;
+}
+
+/* Override any light mode remnants */
+.fumadocs-sidebar {
+  background: hsl(var(--fd-background)) !important;
+  border-right: 1px solid hsl(var(--fd-border)) !important;
+}
+
+/* Style the search bar */
+.fumadocs-search button {
+  background: hsl(var(--fd-muted)) !important;
+  border: 1px solid hsl(var(--fd-border)) !important;
+  color: hsl(var(--fd-muted-foreground)) !important;
+}
+
+.fumadocs-search button:hover {
+  background: hsl(var(--fd-secondary)) !important;
+  border-color: hsl(var(--fd-primary)) !important;
+}
+
+/* Active sidebar links with lime green */
+.fumadocs-sidebar a[data-active="true"] {
+  background: hsl(var(--fd-secondary)) !important;
+  color: hsl(var(--fd-primary)) !important;
+  border-left: 2px solid hsl(var(--fd-primary)) !important;
+}
+
+.fumadocs-sidebar a:hover {
+  background: hsl(var(--fd-secondary)) !important;
+}
+
+/* Links in content */
+.fumadocs-article a {
+  color: hsl(var(--fd-primary)) !important;
+  text-decoration: none;
+}
+
+.fumadocs-article a:hover {
+  text-decoration: underline;
+}
+
+/* Code blocks */
+.fumadocs-article pre {
+  background: hsl(var(--fd-muted)) !important;
+  border: 1px solid hsl(var(--fd-border)) !important;
+}

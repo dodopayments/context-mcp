@@ -30,12 +30,4 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
-        run: npm run reindex
-
-      - name: Upload reindex report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: reindex-report-${{ github.run_number }}
-          path: reindex-report.json
-          retention-days: 30
+        run: npm run reindex:dodo

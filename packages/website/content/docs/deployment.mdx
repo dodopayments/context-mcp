@@ -1,0 +1,153 @@
+---
+title: Deployment
+description: Deploy ContextMCP to production
+---
+
+ContextMCP runs on Cloudflare Workers for low-latency edge deployment.
+
+## Cloudflare Workers
+
+### Prerequisites
+
+- [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier works)
+- Wrangler CLI installed: `npm install -g wrangler`
+- Indexed documentation (run `npm run reindex` first)
+
+### Configure
+
+Edit `cloudflare-worker/wrangler.jsonc`:
+
+```jsonc
+{
+  "name": "contextmcp",
+  "compatibility_date": "2024-01-01",
+  "vars": {
+    "SERVER_NAME": "my-company-docs",
+    "SERVER_DESCRIPTION": "Documentation search for My Company"
+  }
+}
+```
+
+### Set Secrets
+
+```bash
+cd cloudflare-worker
+wrangler secret put OPENAI_API_KEY
+wrangler secret put PINECONE_API_KEY
+wrangler secret put API_KEY  # Optional: for authenticated access
+```
+
+### Deploy
+
+```bash
+npm run deploy
+```
+
+Your server is live at: `https://contextmcp.your-subdomain.workers.dev`
+
+### Verify
+
+```bash
+# Health check
+curl https://your-worker.workers.dev/health
+
+# Test search
+curl "https://your-worker.workers.dev/search?query=authentication&limit=3"
+```
+
+## Custom Domain
+
+Add a custom domain in `wrangler.jsonc`:
+
+```jsonc
+{
+  "routes": [{ "pattern": "mcp.yourdomain.com", "custom_domain": true }]
+}
+```
+
+## Local Development
+
+For testing locally without deploying:
+
+```bash
+cd cloudflare-worker
+npm run dev
+```
+
+Server runs at `http://localhost:8787`.
+
+## Auto-Reindex with GitHub Actions
+
+Keep your index fresh by reindexing on every push to main:
+
+```yaml
+# .github/workflows/reindex.yml
+name: Reindex Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "content/**"
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Reindex
+        run: npm run reindex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Scheduled Reindex
+
+For sources that change externally, add a cron schedule:
+
+```yaml
+on:
+  schedule:
+    - cron: "0 2 * * *" # Daily at 2 AM UTC
+  workflow_dispatch: # Manual trigger
+```
+
+## Environment Variables
+
+| Variable           | Required          | Description               |
+| ------------------ | ----------------- | ------------------------- |
+| `OPENAI_API_KEY`   | Yes               | For generating embeddings |
+| `PINECONE_API_KEY` | Yes               | For vector storage        |
+| `GITHUB_TOKEN`     | For private repos | GitHub access token       |
+| `API_KEY`          | Optional          | Authenticate API requests |
+
+## Troubleshooting
+
+### "Worker failed to deploy"
+
+Check that all required secrets are set:
+
+```bash
+wrangler secret list
+```
+
+### "No results from search"
+
+1. Verify reindex completed: check for errors in `npm run reindex`
+2. Confirm vectors exist in Pinecone dashboard
+3. Try a broader query
+
+### "Timeout errors"
+
+Cloudflare Workers have a 30s CPU limit. If indexing large docs, ensure chunking produces reasonable sizes.
