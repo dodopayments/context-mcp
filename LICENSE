@@ -35,11 +35,10 @@
       "Work" shall mean the work of authorship, whether in Source or
       Object form, made available under the License, as indicated by a
       copyright notice that is included in or attached to the work
-      (which shall not include Communications that are clearly marked or
-      otherwise designated in writing by the copyright owner as "Not a Work").
+      (an example is provided in the Appendix below).
 
       "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based upon (or derived from) the Work and for which the
+      form, that is based on (or derived from) the Work and for which the
       editorial revisions, annotations, elaborations, or other modifications
       represent, as a whole, an original work of authorship. For the purposes
       of this License, Derivative Works shall not include works that remain
@@ -58,7 +57,7 @@
       and issue tracking systems that are managed by, or on behalf of, the
       Licensor for the purpose of discussing and improving the Work, but
       excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution".
+      designated in writing by the copyright owner as "Not a Contribution."
 
       "Contributor" shall mean Licensor and any individual or Legal Entity
       on behalf of whom a Contribution has been received by Licensor and
@@ -200,4 +199,3 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-
