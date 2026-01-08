@@ -111,7 +111,7 @@ export default function Home() {
               <div className="p-12 lg:p-16 flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-white/5">
                 <div className="flex items-center gap-3 mb-8">
                   <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-white/5 border border-white/10">
-                    <Image src="/SVG/brandmark.svg" width={20} height={20} alt="Dodo" />
+                    <Image src="/SVG/Brandmark.svg" width={20} height={20} alt="Dodo" />
                   </div>
                   <div className="h-px w-8 bg-zinc-800" />
                   <span className="text-sm font-mono text-zinc-400">CASE STUDY</span>

@@ -11,7 +11,7 @@ export function Navbar() {
                 <Link href="/" className="flex items-center gap-2 group">
                     <div className="relative h-7 w-7 transition-transform group-hover:scale-105">
                         <Image
-                            src="/SVG/brandmark.svg"
+                            src="/SVG/Brandmark.svg"
                             alt="Dodo Payments"
                             fill
                             className="object-contain"
@@ -23,7 +23,7 @@ export function Navbar() {
 
                 <div className="flex items-center gap-4">
                     <Link
-                        href="https://github.com/dodopayments/contextmcp"
+                        href="https://github.com/dodopayments/context-mcp"
                         target="_blank"
                         className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm font-medium text-zinc-400 transition-all hover:bg-white/10 hover:text-white hover:border-white/20"
                     >

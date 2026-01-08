@@ -7,7 +7,7 @@ export const baseOptions: BaseLayoutProps = {
         title: (
             <div className="flex items-center gap-2">
                 <Image
-                    src="/SVG/brandmark.svg"
+                    src="/SVG/Brandmark.svg"
                     alt="ContextMCP"
                     width={28}
                     height={28}
@@ -19,12 +19,12 @@ export const baseOptions: BaseLayoutProps = {
         ),
         transparentMode: 'none',
     },
-    githubUrl: 'https://github.com/dodopayments/contextmcp',
+    githubUrl: 'https://github.com/dodopayments/context-mcp',
     links: [
         {
             icon: <Github className="size-5" />,
             text: 'GitHub',
-            url: 'https://github.com/dodopayments/contextmcp',
+            url: 'https://github.com/dodopayments/context-mcp',
             external: true,
         },
     ],

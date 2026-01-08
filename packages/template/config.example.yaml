@@ -2,7 +2,7 @@
 # Self-hosted MCP server for your documentation
 #
 # Copy this file to config.yaml and customize for your project.
-# See https://github.com/dodopayments/contextmcp for documentation.
+# See https://github.com/dodopayments/context-mcp for documentation.
 
 # =============================================================================
 # VECTOR DATABASE

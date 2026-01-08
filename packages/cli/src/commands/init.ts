@@ -85,7 +85,7 @@ function printNextSteps(projectName: string) {
   console.log(chalk.bold('  └─────────────────────────────────────────────────────────────┘'));
   console.log('');
   console.log(`  ${chalk.dim('Documentation:')}  ${chalk.cyan.underline('https://contextmcp.ai/docs')}`);
-  console.log(`  ${chalk.dim('GitHub:')}         ${chalk.cyan.underline('https://github.com/dodopayments/contextmcp')}`);
+  console.log(`  ${chalk.dim('GitHub:')}         ${chalk.cyan.underline('https://github.com/dodopayments/context-mcp')}`);
   console.log('');
 }
 

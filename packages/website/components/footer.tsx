@@ -10,7 +10,7 @@ export function Footer() {
                     <div className="flex items-center gap-2">
                         <div className="relative h-5 w-5 opacity-80">
                             <Image
-                                src="/SVG/brandmark.svg"
+                                src="/SVG/Brandmark.svg"
                                 alt="Dodo Payments"
                                 fill
                                 className="object-contain"
@@ -25,7 +25,7 @@ export function Footer() {
                 </div>
 
                 <div className="flex gap-6 text-sm font-medium text-zinc-300">
-                    <Link href="https://github.com/dodopayments/contextmcp" className="hover:text-white transition-colors">GitHub</Link>
+                    <Link href="https://github.com/dodopayments/context-mcp" className="hover:text-white transition-colors">GitHub</Link>
                     <Link href="https://x.com/dodopayments" className="hover:text-white transition-colors">X/Twitter</Link>
                     <Link href="https://dodopayments.com/docs" className="hover:text-white transition-colors">Dodo Docs</Link>
                 </div>

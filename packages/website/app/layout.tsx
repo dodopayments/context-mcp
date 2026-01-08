@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title: "ContextMCP - The Knowledge Layer for AI",
   description: "Self-hosted MCP server that creates a queryable brain from your documentation. Connect Cursor, Windsurf, and Claude to your codebase's ground truth.",
   icons: {
-    icon: "/SVG/brandmark.svg",
+    icon: "/SVG/Brandmark.svg",
   },
 };
 
