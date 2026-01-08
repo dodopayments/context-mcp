@@ -123,3 +123,15 @@ body {
   background: hsl(var(--fd-muted)) !important;
   border: 1px solid hsl(var(--fd-border)) !important;
 }
+
+/* Force dark mode - disable light mode */
+html:not(.dark) {
+  color-scheme: dark !important;
+}
+
+html:not(.dark),
+html:not(.dark) body,
+html:not(.dark) [data-fumadocs-layout] {
+  background: #000000 !important;
+  color: #ffffff !important;
+}

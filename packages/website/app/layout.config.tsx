@@ -11,7 +11,6 @@ export const baseOptions: BaseLayoutProps = {
                     alt="ContextMCP"
                     width={28}
                     height={28}
-                    className="dark:invert-0"
                 />
                 <span className="text-fd-muted-foreground">/</span>
                 <span className="font-medium">ContextMCP</span>
