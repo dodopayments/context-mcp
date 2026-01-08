@@ -43,11 +43,11 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: bun install
+        run: npm install
         working-directory: ./packages/cli
 
       - name: Build
-        run: bun run build
+        run: npm run build
         working-directory: ./packages/cli
 
       - name: Verify package
