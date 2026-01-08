@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://contextmcp.ai/docs
+    about: Check our documentation for guides and examples
+  - name: Discussions
+    url: https://github.com/dodopayments/context-mcp/discussions
+    about: Ask questions and discuss ideas with the community
+

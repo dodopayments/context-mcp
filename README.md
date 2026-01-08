@@ -1,5 +1,15 @@
 # ContextMCP
 
+<p align="center">
+  <a href="https://discord.gg/bYqAp4ayYh">
+    <img src="https://img.shields.io/discord/1305511580854779984?label=Join%20Discord&logo=discord" alt="Join Discord" />
+  </a>
+  <a href="https://twitter.com/dodopayments">
+    <img src="https://img.shields.io/twitter/follow/dodopayments?label=Follow&style=social" alt="Twitter Follow" />
+  </a>
+  <img src="https://img.shields.io/github/license/dodopayments/context-mcp" alt="License" />
+</p>
+
 **Self-hosted MCP server for your documentation.** Index your documentation from across the sources and serve it via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and REST API.
 
 ## Quick Start
@@ -96,3 +106,11 @@ npm run typecheck       # Check all packages
 ## Documentation
 
 Visit [contextmcp.ai/docs](https://contextmcp.ai/docs) for full documentation.
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
