@@ -28,7 +28,13 @@
     "PINECONE_INDEX_NAME": "my-docs-mcp",
     "EMBEDDING_MODEL": "text-embedding-3-large",
     "DEFAULT_TOP_K": "10",
-    "MAX_TOP_K": "50"
+    "MAX_TOP_K": "20",
+
+    // Reranking configuration
+    "ENABLE_RERANK": "true",              // Set to "false" to disable reranking
+    "RERANK_MODEL": "pinecone-rerank-v0", // Pinecone reranking model
+    "RERANK_FETCH_COUNT": "30",           // Candidates to fetch before reranking
+    "MAX_RERANK_CHARS": "1200"            // Max chars per chunk for reranking
   },
 
   // Enable observability

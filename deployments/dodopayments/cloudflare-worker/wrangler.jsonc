@@ -26,7 +26,13 @@
     "PINECONE_INDEX_NAME": "dodo-knowledge-mcp",
     "EMBEDDING_MODEL": "text-embedding-3-large",
     "DEFAULT_TOP_K": "10",
-    "MAX_TOP_K": "50"
+    "MAX_TOP_K": "20",
+
+    // Reranking configuration
+    "ENABLE_RERANK": "true",
+    "RERANK_MODEL": "pinecone-rerank-v0",
+    "RERANK_FETCH_COUNT": "30",
+    "MAX_RERANK_CHARS": "1200"
   },
 
   // Enable observability
