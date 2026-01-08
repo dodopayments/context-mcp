@@ -1,0 +1,17 @@
+{
+  "name": "ContextMCP - The Knowledge Layer for AI",
+  "short_name": "ContextMCP",
+  "description": "Self-hosted MCP server that creates a queryable brain from your documentation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#3B82F6",
+  "icons": [
+    {
+      "src": "/SVG/Brandmark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
+

@@ -34,8 +34,25 @@ export async function generateMetadata(props: {
     const page = source.getPage(params.slug);
     if (!page) notFound();
 
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://contextmcp.ai";
+    const slug = params.slug?.join("/") || "";
+    const url = slug ? `${siteUrl}/docs/${slug}` : `${siteUrl}/docs`;
+
     return {
         title: page.data.title,
-        description: page.data.description,
+        description: page.data.description || "ContextMCP documentation - Learn how to set up and use ContextMCP for indexing your documentation.",
+        openGraph: {
+            title: `${page.data.title} | ContextMCP`,
+            description: page.data.description || "ContextMCP documentation",
+            url,
+            type: "article",
+        },
+        twitter: {
+            title: `${page.data.title} | ContextMCP`,
+            description: page.data.description || "ContextMCP documentation",
+        },
+        alternates: {
+            canonical: url,
+        },
     };
 }
