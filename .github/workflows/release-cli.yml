@@ -1,0 +1,62 @@
+name: Release CLI
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Set version from release tag
+        working-directory: ./packages/cli
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          TAG="${RELEASE_TAG:-${GITHUB_REF#refs/tags/}}"
+          VERSION="${TAG#v}"
+          echo "Setting package version to ${VERSION} from tag ${TAG}"
+          CURRENT=$(bun -e "console.log(require('./package.json').version)")
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "package.json already at ${VERSION}, skipping version bump"
+          else
+            bun -e "const pkg = require('./package.json'); pkg.version = '${VERSION}'; require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n')"
+          fi
+
+      - name: Install dependencies
+        run: bun install
+        working-directory: ./packages/cli
+
+      - name: Build
+        run: bun run build
+        working-directory: ./packages/cli
+
+      - name: Verify package
+        run: npm pack
+        working-directory: ./packages/cli
+
+      - name: Publish to NPM
+        run: npm publish --access public --provenance
+        working-directory: ./packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
