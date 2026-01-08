@@ -1,16 +1,15 @@
 "use client";
 
-import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Check, Copy, Terminal, Search, Database, Server, Zap, Globe, GitBranch, Cloud, Cpu, Play, FileText, Settings, Radio } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Check, Copy } from "lucide-react";
+import { useState } from "react";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
-import { cn } from "@/lib/utils";
 import { FaqSection } from "@/components/faq";
 import { HeroVisual } from "@/components/hero-visual";
 import { FeaturesBento } from "@/components/features-bento";
+import Aurora from "@/components/Aurora";
 
 
 // --- UI Components ---
@@ -33,30 +32,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function ConnectorLine() {
-  return (
-    <div className="hidden md:flex flex-1 items-center justify-center px-2 relative">
-      <div className="h-[1px] w-full bg-white/10 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#60A5FA] to-transparent w-1/2 animate-[shimmer_2s_infinite] opacity-50" />
-      </div>
-    </div>
-  );
-}
-
-function IntegrationNode({ icon: Icon, label, subLabel }: { icon: any, label: string, subLabel: string }) {
-  return (
-    <div className="flex flex-col items-center gap-4 relative z-10 group">
-      <div className="h-16 w-16 rounded-2xl bg-[#09090b] border border-white/10 flex items-center justify-center shadow-2xl transition-all duration-300 group-hover:border-[#60A5FA]/50 group-hover:shadow-[0_0_30px_rgba(96,165,250,0.1)]">
-        <Icon className="h-7 w-7 text-zinc-400 group-hover:text-[#60A5FA] transition-colors" />
-      </div>
-      <div className="text-center">
-        <div className="text-sm font-semibold text-white mb-0.5">{label}</div>
-        <div className="text-xs text-zinc-500 font-mono">{subLabel}</div>
-      </div>
-    </div>
-  );
-}
-
 export default function Home() {
   return (
     <main className="min-h-screen overflow-x-hidden selection:bg-[#60A5FA] selection:text-black bg-black">
@@ -67,7 +42,19 @@ export default function Home() {
       <Navbar />
 
       {/* --- HERO SECTION --- */}
-      <section className="relative pt-32 pb-12 md:pt-48 md:pb-32 px-6">
+      <section id="hero-section" className="relative pt-32 pb-12 md:pt-48 md:pb-32 px-6 overflow-hidden min-h-[600px]">
+        {/* Aurora Background - positioned above fixed backgrounds but below content */}
+        <div className="absolute inset-0 z-[1] overflow-hidden pointer-events-none">
+          <div 
+            className="w-full h-full relative"
+            style={{
+              maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+            }}
+          >
+            <Aurora colorStops={['#7cff67', '#3B82F6', '#b19eef']} amplitude={1.0} blend={0.5} />
+          </div>
+        </div>
         <div className="mx-auto max-w-7xl relative z-10">
           <div className="flex flex-col items-center text-center max-w-6xl mx-auto mb-20">
 
