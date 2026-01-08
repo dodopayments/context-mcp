@@ -7,7 +7,6 @@
   <a href="https://twitter.com/dodopayments">
     <img src="https://img.shields.io/twitter/follow/dodopayments?label=Follow&style=social" alt="Twitter Follow" />
   </a>
-  <img src="https://img.shields.io/github/license/dodopayments/context-mcp" alt="License" />
 </p>
 
 **Self-hosted MCP server for your documentation.** Index your documentation from across the sources and serve it via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and REST API.
