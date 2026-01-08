@@ -8,6 +8,8 @@ dist/
 # Wrangler
 packages/template/cloudflare-worker/.wrangler/
 packages/template/cloudflare-worker/worker-configuration.d.ts
+deployments/dodopayments/cloudflare-worker/.wrangler/
+deployments/dodopayments/cloudflare-worker/worker-configuration.d.ts
 
 # Environment
 .env

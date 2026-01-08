@@ -34,6 +34,12 @@ interface Env {
   DEFAULT_TOP_K: string;
   MAX_TOP_K: string;
 
+  // Reranking configuration
+  ENABLE_RERANK: string;
+  RERANK_MODEL: string;
+  RERANK_FETCH_COUNT: string;
+  MAX_RERANK_CHARS: string;
+
   // Durable Object binding
   MCP_OBJECT: DurableObjectNamespace;
 }
@@ -65,28 +71,28 @@ async function generateQueryEmbedding(
   return response.data[0].embedding;
 }
 
-const MAX_RERANK_CHARS = 1200;
-
 async function rerankWithPinecone(
   pinecone: Pinecone,
   query: string,
   documents: SearchResult[],
-  topN: number
+  topN: number,
+  env: Env
 ): Promise<SearchResult[]> {
   try {
+    const maxRerankChars = parseInt(env.MAX_RERANK_CHARS, 10) || 1200;
+    const rerankModel = env.RERANK_MODEL || 'pinecone-rerank-v0';
+
     const docsForRerank = documents.map((d, idx) => {
       const fullText = `${d.title} - ${d.heading}\n${d.content}`;
       const text =
-        fullText.length > MAX_RERANK_CHARS ? fullText.slice(0, MAX_RERANK_CHARS) + '...' : fullText;
+        fullText.length > maxRerankChars ? fullText.slice(0, maxRerankChars) + '...' : fullText;
       return { id: String(idx), text };
     });
 
-    const rerankResult = await pinecone.inference.rerank(
-      'pinecone-rerank-v0',
-      query,
-      docsForRerank,
-      { topN, returnDocuments: false }
-    );
+    const rerankResult = await pinecone.inference.rerank(rerankModel, query, docsForRerank, {
+      topN,
+      returnDocuments: false,
+    });
 
     return rerankResult.data.map(r => ({
       ...documents[r.index],
@@ -98,24 +104,27 @@ async function rerankWithPinecone(
   }
 }
 
-const RERANK_FETCH_COUNT = 30;
-const DEFAULT_RETURN_COUNT = 5;
-const MAX_RETURN_COUNT = 20;
-
 async function searchDocs(
   openai: OpenAI,
   pinecone: Pinecone,
   env: Env,
   query: string,
-  limit: number = DEFAULT_RETURN_COUNT
+  limit?: number
 ): Promise<SearchResult[]> {
-  const returnCount = Math.min(Math.max(1, limit), MAX_RETURN_COUNT);
+  const defaultTopK = parseInt(env.DEFAULT_TOP_K, 10) || 10;
+  const maxTopK = parseInt(env.MAX_TOP_K, 10) || 20;
+  const rerankEnabled = env.ENABLE_RERANK !== 'false';
+  const rerankFetchCount = parseInt(env.RERANK_FETCH_COUNT, 10) || 30;
+
+  const returnCount = Math.min(Math.max(1, limit ?? defaultTopK), maxTopK);
   const index = pinecone.index(env.PINECONE_INDEX_NAME);
   const queryEmbedding = await generateQueryEmbedding(openai, query, env.EMBEDDING_MODEL);
 
+  const fetchCount = rerankEnabled ? rerankFetchCount : returnCount;
+
   const results = await index.query({
     vector: queryEmbedding,
-    topK: RERANK_FETCH_COUNT,
+    topK: fetchCount,
     includeMetadata: true,
   });
 
@@ -131,11 +140,11 @@ async function searchDocs(
       language: match.metadata?.language as string | undefined,
     })) || [];
 
-  if (searchResults.length > 0) {
-    return rerankWithPinecone(pinecone, query, searchResults, returnCount);
+  if (searchResults.length > 0 && rerankEnabled) {
+    return rerankWithPinecone(pinecone, query, searchResults, returnCount, env);
   }
 
-  return [];
+  return searchResults.slice(0, returnCount);
 }
 
 function formatResults(results: SearchResult[], query: string, serverName: string): string {
@@ -163,7 +172,7 @@ function formatResults(results: SearchResult[], query: string, serverName: strin
 }
 
 // =============================================================================
-// MCP AGENT
+// MCP SERVER
 // =============================================================================
 
 export class ContextMCP extends McpAgent<Env> {
@@ -194,9 +203,11 @@ export class ContextMCP extends McpAgent<Env> {
           limit: z
             .number()
             .min(1)
-            .max(20)
+            .max(parseInt(env.MAX_TOP_K, 10) || 20)
             .optional()
-            .describe('Number of results to return (default: 5, max: 20)'),
+            .describe(
+              `Number of results to return (default: ${env.DEFAULT_TOP_K || '10'}, max: ${env.MAX_TOP_K || '20'})`
+            ),
         },
       },
       async ({ query, limit }) => {
@@ -364,7 +375,7 @@ export default {
 
       try {
         let query: string | null = null;
-        let limit = 5;
+        let limit: number | undefined = undefined;
 
         if (request.method === 'GET') {
           query = url.searchParams.get('query');

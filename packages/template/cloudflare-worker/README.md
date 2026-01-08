@@ -41,14 +41,23 @@ npx wrangler secret put PINECONE_API_KEY
 
 Configure these variables in `wrangler.jsonc`:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER_NAME` | `my-docs-mcp` | Name of your MCP server |
-| `SERVER_DESCRIPTION` | `Search documentation...` | Description shown to clients |
-| `PINECONE_INDEX_NAME` | `my-docs-mcp` | Pinecone index name |
-| `EMBEDDING_MODEL` | `text-embedding-3-large` | OpenAI embedding model |
-| `DEFAULT_TOP_K` | `10` | Default number of search results |
-| `MAX_TOP_K` | `50` | Maximum allowed results |
+| Variable              | Default                   | Description                      |
+| --------------------- | ------------------------- | -------------------------------- |
+| `SERVER_NAME`         | `my-docs-mcp`             | Name of your MCP server          |
+| `SERVER_DESCRIPTION`  | `Search documentation...` | Description shown to clients     |
+| `PINECONE_INDEX_NAME` | `my-docs-mcp`             | Pinecone index name              |
+| `EMBEDDING_MODEL`     | `text-embedding-3-large`  | OpenAI embedding model           |
+| `DEFAULT_TOP_K`       | `10`                      | Default number of search results |
+| `MAX_TOP_K`           | `20`                      | Maximum allowed results          |
+
+#### Reranking Configuration
+
+| Variable             | Default              | Description                                     |
+| -------------------- | -------------------- | ----------------------------------------------- |
+| `ENABLE_RERANK`      | `true`               | Set to `false` to disable reranking             |
+| `RERANK_MODEL`       | `pinecone-rerank-v0` | Pinecone reranking model to use                 |
+| `RERANK_FETCH_COUNT` | `30`                 | Number of candidates to fetch before reranking  |
+| `MAX_RERANK_CHARS`   | `1200`               | Max characters per document for reranking input |
 
 ## Local Development
 
@@ -76,17 +85,18 @@ Set up GitHub Actions with these secrets:
 - `CLOUDFLARE_ACCOUNT_ID` - Your Cloudflare account ID
 
 To create an API token:
+
 1. Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
 2. Create a token with **Edit Cloudflare Workers** permissions
 
 ## Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Landing page with setup instructions |
-| `/mcp` | POST | MCP server endpoint (Streamable HTTP) |
-| `/search` | GET/POST | REST API for direct search |
-| `/health` | GET | Health check endpoint |
+| Endpoint  | Method   | Description                           |
+| --------- | -------- | ------------------------------------- |
+| `/`       | GET      | Landing page with setup instructions  |
+| `/mcp`    | POST     | MCP server endpoint (Streamable HTTP) |
+| `/search` | GET/POST | REST API for direct search            |
+| `/health` | GET      | Health check endpoint                 |
 
 ### REST API Usage
 
@@ -152,8 +162,3 @@ View real-time logs:
 ```bash
 npm run tail
 ```
-
-## License
-
-MIT
-
