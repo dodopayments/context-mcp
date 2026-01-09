@@ -23,7 +23,6 @@ program
 program
   .command('init [project-name]')
   .description('Scaffold a new ContextMCP project')
-  .option('--pinecone-index <name>', 'Pinecone index name')
   .option('--no-install', 'Skip npm install')
   .action(async (projectName, options) => {
     try {

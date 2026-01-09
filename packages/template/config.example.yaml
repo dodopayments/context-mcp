@@ -42,16 +42,11 @@ sources:
     path: content/docs/ # Path to docs within repo
     parser: mdx
     baseUrl: https://docs.mycompany.com # Your docs site URL (for source links)
-    # Optional: OpenAPI spec for files with "openapi:" frontmatter
-    # When set, MDX files with frontmatter like "openapi: get /users" will
-    # have their content generated from the OpenAPI spec
-    openapiSpec: openapi/openapi.yaml
     # Skip directories that shouldn't be indexed
     skipDirs:
       - node_modules
       - .git
       - images
-      - openapi # Raw spec folder (loaded via openapiSpec)
       - ar # Arabic translation
       - cn # Chinese translation
       - internal # Internal docs
@@ -95,12 +90,12 @@ sources:
   # Example 4: Local documentation (for development)
   # ---------------------------------------------------------------------------
   # Use 'local' type for files on your filesystem
-  # - name: local-docs
-  #   displayName: "Local Documentation"
-  #   type: local
-  #   localPath: ./docs/
-  #   parser: markdown
-  #   optional: true    # Don't fail if path doesn't exist
+  - name: local-docs
+    displayName: 'Local Documentation'
+    type: local
+    localPath: ./docs/
+    parser: markdown
+    optional: true # Don't fail if path doesn't exist
 
 # =============================================================================
 # REINDEXING SETTINGS

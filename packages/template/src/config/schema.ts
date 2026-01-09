@@ -40,13 +40,13 @@ export const SourceSchema = z
 
     // Behavior
     optional: z.boolean().default(false),
-    
+
     // Skip directories by name (e.g., node_modules, .git, test, internal)
     skipDirs: z.array(z.string()).default([]),
-    
+
     // Skip specific files by name (case-insensitive matching)
     skipFiles: z.array(z.string()).default([]),
-    
+
     // For OpenAPI sources: directory with MDX files containing openapi: frontmatter
     // Used to build URL mapping from file paths (e.g., "api-reference")
     // If not set, URLs are generated from operationId pattern
@@ -101,11 +101,13 @@ const ReindexSchema = z.object({
 });
 
 // Chunking settings
-const ChunkingSchema = z.object({
-  maxChunkSize: z.number().min(100).max(10000).default(2000),
-  minChunkSize: z.number().min(50).max(5000).default(250),
-  idealChunkSize: z.number().min(100).max(5000).default(1000),
-}).optional();
+const ChunkingSchema = z
+  .object({
+    maxChunkSize: z.number().min(100).max(10000).default(2000),
+    minChunkSize: z.number().min(50).max(5000).default(250),
+    idealChunkSize: z.number().min(100).max(5000).default(1000),
+  })
+  .optional();
 
 export const ConfigSchema = z.object({
   vectordb: VectorDbSchema,
@@ -125,6 +127,3 @@ export const ConfigSchema = z.object({
 
 export type SourceConfig = z.infer<typeof SourceSchema>;
 export type ContextMCPConfig = z.infer<typeof ConfigSchema>;
-
-// Alias for backwards compatibility
-export type DocsMCPConfig = ContextMCPConfig;
