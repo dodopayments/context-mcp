@@ -1,6 +1,6 @@
 {
   "name": "contextmcp",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "CLI to scaffold a ContextMCP documentation RAG server",
   "type": "module",
   "bin": {
