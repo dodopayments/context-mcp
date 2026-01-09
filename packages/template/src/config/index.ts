@@ -6,7 +6,7 @@
 
 // Schema and loader
 export { ConfigSchema, SourceSchema } from './schema.js';
-export type { ContextMCPConfig, SourceConfig, DocsMCPConfig } from './schema.js';
+export type { ContextMCPConfig, SourceConfig } from './schema.js';
 export { loadConfig, validateConfig, configExists } from './loader.js';
 
 export {

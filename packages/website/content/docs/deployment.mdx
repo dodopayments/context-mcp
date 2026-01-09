@@ -23,8 +23,8 @@ Edit `cloudflare-worker/wrangler.jsonc`:
   "compatibility_date": "2024-01-01",
   "vars": {
     "SERVER_NAME": "my-company-docs",
-    "SERVER_DESCRIPTION": "Documentation search for My Company"
-  }
+    "SERVER_DESCRIPTION": "Documentation search for My Company",
+  },
 }
 ```
 
@@ -61,7 +61,7 @@ Add a custom domain in `wrangler.jsonc`:
 
 ```jsonc
 {
-  "routes": [{ "pattern": "mcp.yourdomain.com", "custom_domain": true }]
+  "routes": [{ "pattern": "mcp.yourdomain.com", "custom_domain": true }],
 }
 ```
 
@@ -88,8 +88,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/**"
-      - "content/**"
+      - 'docs/**'
+      - 'content/**'
 
 jobs:
   reindex:
@@ -99,7 +99,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - name: Install dependencies
         run: npm ci
@@ -119,7 +119,7 @@ For sources that change externally, add a cron schedule:
 ```yaml
 on:
   schedule:
-    - cron: "0 2 * * *" # Daily at 2 AM UTC
+    - cron: '0 2 * * *' # Daily at 2 AM UTC
   workflow_dispatch: # Manual trigger
 ```
 
@@ -130,7 +130,6 @@ on:
 | `OPENAI_API_KEY`   | Yes               | For generating embeddings |
 | `PINECONE_API_KEY` | Yes               | For vector storage        |
 | `GITHUB_TOKEN`     | For private repos | GitHub access token       |
-| `API_KEY`          | Optional          | Authenticate API requests |
 
 ## Troubleshooting
 
