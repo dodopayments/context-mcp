@@ -129,4 +129,4 @@ Contributions are welcome! Please see the [main repository](https://github.com/d
 
 ## License
 
-MIT
+This project is licensed under the Apache-2.0 Licence. See the main [LICENSE](https://github.com/dodopayments/context-mcp/blob/main/LICENSE) file for details.
