@@ -58,7 +58,7 @@ export function Navbar() {
                     <Link
                         href="https://github.com/dodopayments/context-mcp"
                         target="_blank"
-                        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm font-medium text-zinc-400 transition-all hover:bg-white/10 hover:text-white hover:border-white/20"
+                        className="flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-4 py-1.5 text-sm font-medium text-zinc-200 transition-all hover:bg-white/20 hover:text-white hover:border-white/35"
                     >
                         <Github className="h-4 w-4" />
                         <span>Star</span>
