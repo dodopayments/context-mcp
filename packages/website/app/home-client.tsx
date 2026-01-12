@@ -9,7 +9,7 @@ import { Footer } from "@/components/footer";
 import { FaqSection } from "@/components/faq";
 import { HeroVisual } from "@/components/hero-visual";
 import { FeaturesBento } from "@/components/features-bento";
-import Aurora from "@/components/Aurora";
+import Silk from "@/components/Silk";
 
 
 // --- UI Components ---
@@ -52,7 +52,13 @@ export function HomeClient() {
               WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
             }}
           >
-            <Aurora colorStops={['#7cff67', '#3B82F6', '#b19eef']} amplitude={1.0} blend={0.5} />
+            <Silk
+              speed={5}
+              scale={1}
+              color="#214683"
+              noiseIntensity={1.5}
+              rotation={0}
+            />
           </div>
         </div>
         <div className="mx-auto max-w-7xl relative z-10">
@@ -62,9 +68,9 @@ export function HomeClient() {
               Self-hosted alternative to <br /> <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] animate-gradient bg-[length:200%_auto]">Context7</span>
             </h1>
 
-            <p className="text-xl md:text-2xl text-zinc-400 max-w-2xl leading-relaxed mb-10 font-medium">
+            <p className="text-xl md:text-2xl text-zinc-00 max-w-2xl leading-relaxed mb-10 font-medium">
               Index your documentation from different sources. <br />
-              <span className="text-zinc-500">Give your AI Agents up-to-date information.</span>
+              <span className="text-zinc-300">Give your AI Agents up-to-date information.</span>
             </p>
 
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
