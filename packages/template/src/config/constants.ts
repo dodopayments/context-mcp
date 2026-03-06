@@ -20,9 +20,10 @@ export const PINECONE_REGION = process.env.PINECONE_REGION || 'us-east-1';
 export const PINECONE_METADATA_MAX_LENGTH = 8000;
 export const MIN_MEANINGFUL_CONTENT_LENGTH = 50;
 
-// text-embedding-3-large has an 8191-token context limit.
-// We cap at 8000 tokens (~200 token safety margin) to account for variance
-export const EMBEDDING_MAX_INPUT_CHARS = 8000 * 4;
+// text-embedding-3-large uses cl100k_base encoding with an 8191-token limit.
+// Left a small safety margin for any edge cases in the tokenizer.
+export const EMBEDDING_MAX_TOKENS = 8100;
+export const EMBEDDING_ENCODING = 'cl100k_base' as const;
 
 // API defaults
 export const DEFAULT_TOP_K = 10;
