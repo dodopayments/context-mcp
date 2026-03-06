@@ -4,16 +4,19 @@
 
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
+import { get_encoding } from 'tiktoken';
 import {
   EMBEDDING_MODEL,
   EMBEDDING_DIMENSION,
   PINECONE_CLOUD,
   PINECONE_REGION,
   PINECONE_METADATA_MAX_LENGTH,
-  EMBEDDING_MAX_INPUT_CHARS,
+  EMBEDDING_MAX_TOKENS,
+  EMBEDDING_ENCODING,
 } from '../config/index.js';
 import { DocChunk } from '../types/index.js';
 
+const encoder = get_encoding(EMBEDDING_ENCODING);
 
 // =============================================================================
 // TYPES
@@ -254,11 +257,11 @@ export function prepareChunkForEmbedding(chunk: DocChunk): string {
   // Add the main content
   parts.push(chunk.content);
   const embeddingInput = parts.join('\n\n');
-  
-  // Truncate to embedding input limit if necessary
-  return embeddingInput.length > EMBEDDING_MAX_INPUT_CHARS
-    ? embeddingInput.substring(0, EMBEDDING_MAX_INPUT_CHARS)
-    : embeddingInput;
+
+  const tokens = encoder.encode(embeddingInput);
+  if (tokens.length <= EMBEDDING_MAX_TOKENS) return embeddingInput;
+  const truncatedTokens = tokens.slice(0, EMBEDDING_MAX_TOKENS);
+  return new TextDecoder().decode(encoder.decode(truncatedTokens));
 }
 
 // =============================================================================
