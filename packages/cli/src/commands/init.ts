@@ -24,7 +24,11 @@ function runCommand(command: string, cwd: string): boolean {
   try {
     execSync(command, { cwd, stdio: 'pipe' });
     return true;
-  } catch {
+  } catch (error) {
+    console.warn(chalk.yellow(`\n Command failed: ${command}`));
+    if (error instanceof Error) {
+      console.warn(chalk.dim(`   ${error.message}`));
+    }
     return false;
   }
 }
