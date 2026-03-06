@@ -27,6 +27,7 @@ export {
 
   // Content limits
   MIN_MEANINGFUL_CONTENT_LENGTH,
+  EMBEDDING_MAX_INPUT_CHARS,
 
   // API defaults
   DEFAULT_TOP_K,

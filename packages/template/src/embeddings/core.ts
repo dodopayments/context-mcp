@@ -10,6 +10,7 @@ import {
   PINECONE_CLOUD,
   PINECONE_REGION,
   PINECONE_METADATA_MAX_LENGTH,
+  EMBEDDING_MAX_INPUT_CHARS,
 } from '../config/index.js';
 import { DocChunk } from '../types/index.js';
 
@@ -252,7 +253,12 @@ export function prepareChunkForEmbedding(chunk: DocChunk): string {
   
   // Add the main content
   parts.push(chunk.content);
-  return parts.join('\n\n');
+  const embeddingInput = parts.join('\n\n');
+  
+  // Truncate to embedding input limit if necessary
+  return embeddingInput.length > EMBEDDING_MAX_INPUT_CHARS
+    ? embeddingInput.substring(0, EMBEDDING_MAX_INPUT_CHARS)
+    : embeddingInput;
 }
 
 // =============================================================================
