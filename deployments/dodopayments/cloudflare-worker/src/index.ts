@@ -5,7 +5,8 @@
  * Uses Cloudflare's agents framework for proper MCP support.
  *
  * Environment variables (set via wrangler secret):
- * - OPENAI_API_KEY: Required for embedding generation
+ * - GEMINI_API_KEY: Required when EMBEDDING_PROVIDER=gemini (default)
+ * - OPENAI_API_KEY: Required when EMBEDDING_PROVIDER=openai
  * - PINECONE_API_KEY: Required for vector search
  */
 
@@ -13,6 +14,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpAgent } from 'agents/mcp';
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 
 // =============================================================================
@@ -23,10 +25,13 @@ interface Env {
   // Secrets (set via wrangler secret put)
   OPENAI_API_KEY: string;
   PINECONE_API_KEY: string;
+  GEMINI_API_KEY: string;
 
   // Variables (set in wrangler.jsonc)
   PINECONE_INDEX_NAME: string;
+  EMBEDDING_PROVIDER: string; // 'openai' | 'gemini'
   EMBEDDING_MODEL: string;
+  EMBEDDING_DIMENSIONS: string;
   DEFAULT_TOP_K: string;
   MAX_TOP_K: string;
 
@@ -55,15 +60,26 @@ interface SearchResult {
 // SEARCH FUNCTIONALITY
 // =============================================================================
 
-async function generateQueryEmbedding(
-  openai: OpenAI,
-  query: string,
-  model: string
-): Promise<number[]> {
-  const response = await openai.embeddings.create({
-    model,
-    input: [query],
-  });
+async function generateQueryEmbedding(env: Env, query: string): Promise<number[]> {
+  const provider = env.EMBEDDING_PROVIDER || 'openai';
+  const dimensions = parseInt(env.EMBEDDING_DIMENSIONS, 10) || 3072;
+
+  if (provider === 'gemini') {
+    const gemini = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+    const response = await gemini.models.embedContent({
+      model: env.EMBEDDING_MODEL,
+      contents: [{ parts: [{ text: query }], role: 'user' }],
+      config: {
+        taskType: 'RETRIEVAL_QUERY' as const,
+        outputDimensionality: dimensions,
+      },
+    });
+    return response.embeddings?.[0]?.values ?? [];
+  }
+
+  // Default: OpenAI
+  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const response = await openai.embeddings.create({ model: env.EMBEDDING_MODEL, input: [query] });
   return response.data[0].embedding;
 }
 
@@ -105,7 +121,6 @@ async function rerankWithPinecone(
 }
 
 async function searchDocs(
-  openai: OpenAI,
   pinecone: Pinecone,
   env: Env,
   query: string,
@@ -118,7 +133,7 @@ async function searchDocs(
 
   const returnCount = Math.min(Math.max(1, limit ?? defaultTopK), maxTopK);
   const index = pinecone.index(env.PINECONE_INDEX_NAME);
-  const queryEmbedding = await generateQueryEmbedding(openai, query, env.EMBEDDING_MODEL);
+  const queryEmbedding = await generateQueryEmbedding(env, query);
 
   const fetchCount = rerankEnabled ? rerankFetchCount : returnCount;
 
@@ -186,7 +201,6 @@ export class DodoKnowledgeMCP extends McpAgent<Env> {
     const defaultTopK = parseInt(env.DEFAULT_TOP_K || '10', 10);
 
     // Initialize clients
-    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
     const pinecone = new Pinecone({ apiKey: env.PINECONE_API_KEY });
 
     // Register the search_docs tool
@@ -214,7 +228,7 @@ export class DodoKnowledgeMCP extends McpAgent<Env> {
       },
       async ({ query, limit }) => {
         try {
-          const results = await searchDocs(openai, pinecone, env, query, limit);
+          const results = await searchDocs(pinecone, env, query, limit);
           const formatted = formatResults(results, query);
 
           return {
@@ -409,9 +423,8 @@ export default {
           });
         }
 
-        const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
         const pinecone = new Pinecone({ apiKey: env.PINECONE_API_KEY });
-        const results = await searchDocs(openai, pinecone, env, query, limit);
+        const results = await searchDocs(pinecone, env, query, limit);
         const formatted = formatResults(results, query);
 
         return new Response(formatted, {

@@ -30,6 +30,7 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@google/genai": "^1.46.0",
     "@types/node": "^24.10.1",
     "prettier": "^3.4.2",
     "tsx": "^4.20.6",

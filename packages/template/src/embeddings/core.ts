@@ -4,6 +4,7 @@
 
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { get_encoding } from 'tiktoken';
 import {
   EMBEDDING_MODEL,
@@ -16,6 +17,7 @@ import {
 } from '../config/index.js';
 import { DocChunk } from '../types/index.js';
 
+// cl100k_base approximates both OpenAI and Gemini tokenization (~8192 token limit each)
 const encoder = get_encoding(EMBEDDING_ENCODING);
 
 // =============================================================================
@@ -48,30 +50,38 @@ export interface EmbeddingRecord {
 /**
  * Generate embeddings for a batch of texts using OpenAI
  */
-export async function generateEmbeddings(
+export async function generateEmbeddingsOpenAI(
   openai: OpenAI,
-  texts: string[]
+  texts: string[],
+  model: string
 ): Promise<number[][]> {
   const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
+    model,
     input: texts,
   });
   return response.data.map(e => e.embedding);
 }
 
 /**
- * Generate embedding for a single query
+ * Generate embeddings for a batch of document texts using Gemini
  */
-export async function generateQueryEmbedding(
-  openai: OpenAI,
-  query: string
-): Promise<number[]> {
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: [query],
+export async function generateEmbeddingsGemini(
+  gemini: GoogleGenAI,
+  model: string,
+  texts: string[],
+  dimensions: number
+): Promise<number[][]> {
+  const response = await gemini.models.embedContent({
+    model,
+    contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+    config: {
+      taskType: 'RETRIEVAL_DOCUMENT' as const,
+      outputDimensionality: dimensions,
+    },
   });
-  return response.data[0].embedding;
+  return (response.embeddings ?? []).map(e => e.values ?? []);
 }
+
 
 // =============================================================================
 // PINECONE FUNCTIONS
