@@ -6,6 +6,10 @@
 export const EMBEDDING_MODEL = 'text-embedding-3-large';
 export const EMBEDDING_DIMENSION = 3072;
 
+// Gemini embedding defaults
+export const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-2-preview';
+export const GEMINI_EMBEDDING_DIMENSION = 3072;
+
 // Batch processing
 export const DEFAULT_BATCH_SIZE = 100;
 export const DELAY_BETWEEN_BATCHES = 0;

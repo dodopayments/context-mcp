@@ -24,7 +24,9 @@
   // Environment variables (non-sensitive)
   "vars": {
     "PINECONE_INDEX_NAME": "dodo-knowledge-mcp",
-    "EMBEDDING_MODEL": "text-embedding-3-large",
+    "EMBEDDING_PROVIDER": "gemini",
+    "EMBEDDING_MODEL": "gemini-embedding-2-preview",
+    "EMBEDDING_DIMENSIONS": "3072",
     "DEFAULT_TOP_K": "10",
     "MAX_TOP_K": "20",
 
