@@ -38,6 +38,10 @@ npm install
 npm run deploy
 ```
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/dodopayments-contextmcp).
+
 ## What is ContextMCP?
 
 ContextMCP creates a searchable knowledge base from your documentation that AI assistants can query via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
