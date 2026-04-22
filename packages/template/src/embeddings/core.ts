@@ -55,15 +55,15 @@ export async function generateEmbeddingsOpenAI(
   texts: string[],
   model: string
 ): Promise<number[][]> {
-  const response = await openai.embeddings.create({
-    model,
-    input: texts,
-  });
-  return response.data.map(e => e.embedding);
+  return withRetry(() =>
+    openai.embeddings.create({ model, input: texts })
+      .then(response => response.data.map(e => e.embedding))
+  );
 }
 
 /**
- * Generate embeddings for a batch of document texts using Gemini
+ * Generate embeddings for a batch of document texts using Gemini.
+ * Retries on 429 rate-limit errors with exponential backoff.
  */
 export async function generateEmbeddingsGemini(
   gemini: GoogleGenAI,
@@ -71,15 +71,16 @@ export async function generateEmbeddingsGemini(
   texts: string[],
   dimensions: number
 ): Promise<number[][]> {
-  const response = await gemini.models.embedContent({
-    model,
-    contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
-    config: {
-      taskType: 'RETRIEVAL_DOCUMENT' as const,
-      outputDimensionality: dimensions,
-    },
-  });
-  return (response.embeddings ?? []).map(e => e.values ?? []);
+  return withRetry(() =>
+    gemini.models.embedContent({
+      model,
+      contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+      config: {
+        taskType: 'RETRIEVAL_DOCUMENT' as const,
+        outputDimensionality: dimensions,
+      },
+    }).then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+  );
 }
 
 
@@ -283,4 +284,27 @@ export function prepareChunkForEmbedding(chunk: DocChunk): string {
  */
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry an async operation with exponential backoff on 429 rate-limit errors.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 5,
+  baseDelayMs = 2000
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      if (status !== 429 || attempt === maxAttempts) throw err;
+      const delay = baseDelayMs * 2 ** (attempt - 1);
+      console.log(`\n   ⏳ Rate limited, retrying in ${delay / 1000}s (attempt ${attempt}/${maxAttempts})...`);
+      await sleep(delay);
+    }
+  }
+  // unreachable, but satisfies TypeScript
+  throw new Error('withRetry: exhausted attempts');
 }
