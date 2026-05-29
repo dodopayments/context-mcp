@@ -32,7 +32,7 @@ export const SourceSchema = z
     localPath: z.string().optional(),
 
     // Parser type
-    parser: z.enum(['mdx', 'markdown', 'openapi']),
+    parser: z.enum(['mdx', 'markdown', 'openapi', 'html']),
 
     // Metadata enrichment
     language: z.string().optional(),

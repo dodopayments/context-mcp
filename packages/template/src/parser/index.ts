@@ -13,6 +13,7 @@ import type { DocChunk, ChunkConfig } from '../types/index.js';
 import { parseMDXSource } from './chunkers/mdx-chunker.js';
 import { parseMarkdownSource } from './chunkers/markdown-chunker.js';
 import { parseOpenAPISource } from './chunkers/openapi-router.js';
+import { parseHTMLSource } from './chunkers/html-chunker.js';
 
 // Re-export types
 export type { DocChunk };
@@ -46,6 +47,10 @@ export async function parseSource(
     case 'openapi':
       // OpenAPI/Swagger specifications
       return parseOpenAPISource(source, fetched.localPath, chunkConfig);
+
+    case 'html':
+      // Raw HTML documents (converted to Markdown, then chunked)
+      return parseHTMLSource(source, fetched.localPath, chunkConfig);
 
     default:
       throw new Error(`Unknown parser type: ${source.parser}`);
