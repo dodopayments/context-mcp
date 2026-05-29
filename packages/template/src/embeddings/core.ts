@@ -159,6 +159,43 @@ export async function generateEmbeddingsVoyage(
   );
 }
 
+/**
+ * Generate embeddings for a batch of texts using a local Ollama server.
+ * No API key required; runs fully offline against the configured base URL.
+ *
+ * @param baseUrl - Ollama server URL, e.g. http://localhost:11434
+ * @see https://github.com/ollama/ollama/blob/main/docs/api.md#generate-embeddings
+ */
+export async function generateEmbeddingsOllama(
+  baseUrl: string,
+  model: string,
+  texts: string[]
+): Promise<number[][]> {
+  const url = `${baseUrl.replace(/\/$/, '')}/api/embed`;
+  return withRetry(
+    async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Ollama's /api/embed accepts a string or string[] in `input`.
+        body: JSON.stringify({ model, input: texts }),
+      });
+      if (!res.ok) {
+        throw Object.assign(new Error(`Ollama embed failed: ${res.status} ${res.statusText}`), {
+          status: res.status,
+          headers: res.headers,
+        });
+      }
+      const data = (await res.json()) as { embeddings?: number[][] };
+      if (!data.embeddings) {
+        throw new Error('Ollama embed: unexpected response shape (no embeddings)');
+      }
+      return data.embeddings;
+    },
+    { label: 'Ollama embed' }
+  );
+}
+
 
 // =============================================================================
 // PINECONE FUNCTIONS

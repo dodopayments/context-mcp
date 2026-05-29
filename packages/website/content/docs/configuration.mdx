@@ -93,6 +93,7 @@ embeddings:
 | `gemini` | `gemini-embedding-2-preview` | `GEMINI_API_KEY` |
 | `cohere` | `embed-v4.0`                 | `COHERE_API_KEY` |
 | `voyage` | `voyage-3`                   | `VOYAGE_API_KEY` |
+| `ollama` | `nomic-embed-text`           | _(none — local)_ |
 
 Set `embeddings.provider`, `embeddings.model`, and `embeddings.dimensions` to
 match your chosen provider, and set the corresponding API key. The Cloudflare
@@ -106,6 +107,27 @@ embeddings:
   model: voyage-3
   dimensions: 1024
 ```
+
+### Local Embeddings with Ollama
+
+Run embeddings fully offline with a local [Ollama](https://ollama.com) server —
+no API key, no per-token cost.
+
+```yaml
+embeddings:
+  provider: ollama
+  model: nomic-embed-text # or mxbai-embed-large, etc.
+  dimensions: 768 # must match the model's output dimension
+  ollama:
+    baseUrl: http://localhost:11434 # optional, this is the default
+```
+
+Pull the model first: `ollama pull nomic-embed-text`.
+
+> **Worker note:** The Cloudflare worker generates query embeddings at request
+> time, and Workers cannot reach `localhost`. To serve an Ollama-indexed corpus,
+> expose your Ollama server on a reachable URL and set `OLLAMA_BASE_URL` in the
+> worker — or run the self-hosted Node server (see the self-hosting docs).
 
 ## Sources
 
