@@ -26,7 +26,11 @@ const DEFAULT_GITLAB_HOST = 'gitlab.com';
  * Build a clone URL for GitLab, embedding a token for private repos.
  * GitLab uses the `oauth2:<token>` userinfo form for HTTPS token auth.
  */
-function buildCloneUrl(host: string, repository: string, token: string | undefined): string {
+export function buildCloneUrl(
+  host: string,
+  repository: string,
+  token: string | undefined
+): string {
   if (token) {
     return `https://oauth2:${token}@${host}/${repository}.git`;
   }
