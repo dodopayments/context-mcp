@@ -12,6 +12,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  parseTxtArgs,
+  resolvePaths,
+  shouldRefuseOverwrite,
+  formatChunks,
+  type TxtChunk,
+} from '../src/scripts/index-to-txt-lib.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,34 +27,8 @@ const __dirname = path.dirname(__filename);
 // CLI ARGS
 // =============================================================================
 
-interface CliArgs {
-  input?: string;
-  output?: string;
-  force: boolean;
-  help: boolean;
-}
-
-function parseArgs(): CliArgs {
-  const args: CliArgs = {
-    force: false,
-    help: false,
-  };
-
-  for (let i = 2; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-
-    if (arg === '--help' || arg === '-h') {
-      args.help = true;
-    } else if (arg === '--force' || arg === '-f') {
-      args.force = true;
-    } else if (arg === '--input' || arg === '-i') {
-      args.input = process.argv[++i];
-    } else if (arg === '--output' || arg === '-o') {
-      args.output = process.argv[++i];
-    }
-  }
-
-  return args;
+function parseArgs() {
+  return parseTxtArgs(process.argv.slice(2));
 }
 
 function printHelp(): void {
@@ -77,80 +58,9 @@ Examples:
 // TYPES
 // =============================================================================
 
-interface ChunkMetadata {
-  description?: string;
-  tags?: string[];
-  sourceUrl?: string;
-  repository?: string;
-  language?: string;
-  method?: string;
-  path?: string;
-}
-
-interface DocChunk {
-  id: string;
-  documentPath: string;
-  documentTitle: string;
-  category: string;
-  heading: string;
-  content: string;
-  metadata: ChunkMetadata;
-}
-
 interface DocsIndex {
-  documents: any[];
-  chunks: DocChunk[];
-}
-
-// =============================================================================
-// FORMAT FUNCTION (matches Cloudflare worker output format)
-// =============================================================================
-
-function formatChunks(chunks: DocChunk[]): string {
-  const lines: string[] = [
-    '# Documentation',
-    `> Total chunks: ${chunks.length}`,
-    '',
-  ];
-
-  const separator = '-'.repeat(40);
-
-  chunks.forEach(chunk => {
-    lines.push(separator);
-    // Use documentTitle (matches result.title from worker's SearchResult)
-    lines.push(`## ${chunk.documentTitle}`);
-    
-    // Show heading if it's different from documentTitle (provides section context)
-    if (chunk.heading && chunk.heading !== chunk.documentTitle) {
-      lines.push(`Heading: ${chunk.heading}`);
-    }
-    
-    // Source URL (matches result.url from worker)
-    if (chunk.metadata.sourceUrl) {
-      lines.push(`Source: ${chunk.metadata.sourceUrl}`);
-    }
-    
-    // API method and path (matches result.method and result.path from worker)
-    if (chunk.metadata.method && chunk.metadata.path) {
-      lines.push(`API: ${chunk.metadata.method} ${chunk.metadata.path}`);
-    }
-    
-    // Language (matches result.language from worker)
-    if (chunk.metadata.language) {
-      lines.push(`Language: ${chunk.metadata.language}`);
-    }
-    
-    // Empty line before content (matches worker format)
-    lines.push('');
-    
-    // Content (matches result.content from worker)
-    lines.push(chunk.content || '');
-    
-    // Empty line after content (matches worker format)
-    lines.push('');
-  });
-
-  return lines.join('\n');
+  documents: unknown[];
+  chunks: TxtChunk[];
 }
 
 // =============================================================================
@@ -166,28 +76,23 @@ async function main() {
   }
 
   const dataDir = path.resolve(__dirname, '../data');
-  const indexPath = args.input
-    ? path.resolve(args.input)
-    : path.join(dataDir, 'chunks-index.json');
-  const outputPath = args.output
-    ? path.resolve(args.output)
-    : path.join(dataDir, 'chunks-full.txt');
+  const { inputPath, outputPath } = resolvePaths(args, dataDir);
 
-  console.log(`📖 Reading ${indexPath}...`);
+  console.log(`📖 Reading ${inputPath}...`);
 
-  if (!fs.existsSync(indexPath)) {
-    console.error(`❌ File not found: ${indexPath}`);
+  if (!fs.existsSync(inputPath)) {
+    console.error(`❌ File not found: ${inputPath}`);
     console.log('Run "npm run parse" first to generate the index.');
     process.exit(1);
   }
 
-  if (fs.existsSync(outputPath) && !args.force) {
+  if (shouldRefuseOverwrite(fs.existsSync(outputPath), args.force)) {
     console.error(`❌ Output file already exists: ${outputPath}`);
     console.error('   Pass --force to overwrite it.');
     process.exit(1);
   }
 
-  const indexData: DocsIndex = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+  const indexData: DocsIndex = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
   
   console.log(`📊 Found ${indexData.chunks.length} chunks`);
   
