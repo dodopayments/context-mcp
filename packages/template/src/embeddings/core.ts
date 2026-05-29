@@ -286,22 +286,124 @@ export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Network error codes that are safe to retry (transient connectivity issues).
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
 /**
- * Retry an async operation with exponential backoff on 429 rate-limit errors.
+ * Extract an HTTP status code from a variety of error shapes
+ * (OpenAI/Gemini SDK errors, fetch Response-like errors, plain objects).
+ */
+function getErrorStatus(err: unknown): number | undefined {
+  const e = err as { status?: number; statusCode?: number; response?: { status?: number } };
+  return e?.status ?? e?.statusCode ?? e?.response?.status;
+}
+
+/**
+ * Extract a network error code (e.g. ECONNRESET) from an error or its cause.
+ */
+function getErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code ?? e?.cause?.code;
+}
+
+/**
+ * Decide whether an error is worth retrying: rate limits (429), transient
+ * server errors (5xx), request timeouts (408), and network-level failures.
+ */
+export function isRetryableError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 429 || status === 408) return true;
+  if (status !== undefined && status >= 500 && status <= 599) return true;
+
+  const code = getErrorCode(err);
+  if (code && RETRYABLE_NETWORK_CODES.has(code)) return true;
+
+  return false;
+}
+
+/**
+ * Honour a Retry-After header (seconds or HTTP-date) if present on the error.
+ * Returns a delay in ms, or undefined if not present/parseable.
+ */
+function retryAfterMs(err: unknown): number | undefined {
+  const headers = (err as { headers?: Record<string, string> | Headers })?.headers;
+  if (!headers) return undefined;
+  const raw =
+    typeof (headers as Headers).get === 'function'
+      ? (headers as Headers).get('retry-after')
+      : (headers as Record<string, string>)['retry-after'];
+  if (!raw) return undefined;
+
+  const asNumber = Number(raw);
+  if (!Number.isNaN(asNumber)) return asNumber * 1000;
+
+  const asDate = Date.parse(raw);
+  if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
+
+  return undefined;
+}
+
+export interface RetryOptions {
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  /** Custom predicate; defaults to isRetryableError. */
+  shouldRetry?: (err: unknown) => boolean;
+  /** Label used in log output. */
+  label?: string;
+}
+
+/**
+ * Retry an async operation with exponential backoff + jitter.
+ *
+ * Retries on rate limits (429), request timeout (408), transient server
+ * errors (5xx) and network failures (ECONNRESET, ETIMEDOUT, ...). Honours a
+ * Retry-After header when the server provides one.
+ *
+ * Backwards compatible: still callable as withRetry(fn, maxAttempts, baseDelayMs).
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  maxAttempts = 5,
-  baseDelayMs = 2000
+  optionsOrMaxAttempts: number | RetryOptions = {},
+  baseDelayMsArg = 2000
 ): Promise<T> {
+  const options: RetryOptions =
+    typeof optionsOrMaxAttempts === 'number'
+      ? { maxAttempts: optionsOrMaxAttempts, baseDelayMs: baseDelayMsArg }
+      : optionsOrMaxAttempts;
+
+  const maxAttempts = options.maxAttempts ?? 5;
+  const baseDelayMs = options.baseDelayMs ?? 2000;
+  const maxDelayMs = options.maxDelayMs ?? 60000;
+  const shouldRetry = options.shouldRetry ?? isRetryableError;
+  const label = options.label ?? 'Request';
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err: unknown) {
-      const status = (err as { status?: number })?.status;
-      if (status !== 429 || attempt === maxAttempts) throw err;
-      const delay = baseDelayMs * 2 ** (attempt - 1);
-      console.log(`\n   ⏳ Rate limited, retrying in ${delay / 1000}s (attempt ${attempt}/${maxAttempts})...`);
+      if (!shouldRetry(err) || attempt === maxAttempts) throw err;
+
+      // Prefer server-provided Retry-After, else exponential backoff with jitter.
+      const backoff = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
+      const jitter = Math.floor(Math.random() * Math.min(1000, backoff));
+      const delay = retryAfterMs(err) ?? backoff + jitter;
+
+      const reason = getErrorStatus(err) ?? getErrorCode(err) ?? 'error';
+      console.log(
+        `\n   ⏳ ${label} failed (${reason}), retrying in ${(delay / 1000).toFixed(1)}s ` +
+          `(attempt ${attempt}/${maxAttempts})...`
+      );
       await sleep(delay);
     }
   }
