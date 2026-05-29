@@ -17,12 +17,14 @@
 import { readFileSync, existsSync } from 'fs';
 import 'dotenv/config';
 import { parse as parseYaml } from 'yaml';
-import { ConfigSchema } from '../src/config/schema.js';
 import {
-  validateEmbeddingConfig,
-  EMBEDDING_PROVIDERS,
-  type EmbeddingProvider,
-} from '../src/config/validate-embeddings.js';
+  checkNodeVersion,
+  checkEnvVar,
+  checkConfig,
+  countResults,
+  hasFailure,
+  type CheckResult,
+} from '../src/config/doctor-checks.js';
 
 interface CliArgs {
   config?: string;
@@ -58,30 +60,7 @@ Exit codes:
 `);
 }
 
-type Status = 'pass' | 'warn' | 'fail';
-
-const ICON: Record<Status, string> = { pass: '✅', warn: '⚠️ ', fail: '❌' };
-
-class Report {
-  private results: { status: Status; label: string; detail?: string }[] = [];
-
-  add(status: Status, label: string, detail?: string): void {
-    this.results.push({ status, label, detail });
-    console.log(`${ICON[status]} ${label}${detail ? ` — ${detail}` : ''}`);
-  }
-
-  get failed(): boolean {
-    return this.results.some(r => r.status === 'fail');
-  }
-
-  get counts(): Record<Status, number> {
-    return this.results.reduce(
-      (acc, r) => ({ ...acc, [r.status]: acc[r.status] + 1 }),
-      { pass: 0, warn: 0, fail: 0 } as Record<Status, number>
-    );
-  }
-}
-
+const ICON = { pass: '✅', warn: '⚠️ ', fail: '❌' } as const;
 const CONFIG_PATHS = ['config.yaml', 'config.yml', 'config/config.yaml', '.config.yaml'];
 
 function findConfigFile(): string | null {
@@ -89,7 +68,22 @@ function findConfigFile(): string | null {
   return null;
 }
 
-const MIN_NODE_MAJOR = 18;
+function render(results: CheckResult[]): void {
+  for (const r of results) {
+    console.log(`${ICON[r.status]} ${r.label}${r.detail ? ` — ${r.detail}` : ''}`);
+  }
+}
+
+function summarise(results: CheckResult[]): void {
+  const { pass, warn, fail } = countResults(results);
+  console.log('\n' + '═'.repeat(50));
+  console.log(`\n${pass} passed, ${warn} warning(s), ${fail} failed`);
+  if (hasFailure(results)) {
+    console.error('\n❌ Environment is NOT ready. Fix the failed checks above.');
+    process.exit(1);
+  }
+  console.log('\n✅ Environment is ready.');
+}
 
 function main(): void {
   const args = parseArgs();
@@ -101,94 +95,42 @@ function main(): void {
   console.log('🩺 ContextMCP Doctor\n');
   console.log('═'.repeat(50) + '\n');
 
-  const report = new Report();
+  const results: CheckResult[] = [];
 
-  // --- 1. Node.js version ---------------------------------------------------
-  const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
-  if (nodeMajor >= MIN_NODE_MAJOR) {
-    report.add('pass', 'Node.js version', `v${process.versions.node}`);
-  } else {
-    report.add(
-      'fail',
-      'Node.js version',
-      `v${process.versions.node} (requires >= ${MIN_NODE_MAJOR})`
-    );
-  }
+  // 1. Node.js version.
+  results.push(checkNodeVersion(process.versions.node));
 
-  // --- 2. Config file presence ----------------------------------------------
+  // 2. Config file presence.
   const configPath = args.config || findConfigFile();
   if (!configPath || !existsSync(configPath)) {
-    report.add('fail', 'Config file', `not found (looked for ${CONFIG_PATHS.join(', ')})`);
-    summarise(report);
+    results.push({
+      status: 'fail',
+      label: 'Config file',
+      detail: `not found (looked for ${CONFIG_PATHS.join(', ')})`,
+    });
+    render(results);
+    summarise(results);
     return;
   }
-  report.add('pass', 'Config file', configPath);
+  results.push({ status: 'pass', label: 'Config file', detail: configPath });
 
-  // --- 3. Config parses + validates -----------------------------------------
-  let parsedData: ReturnType<typeof ConfigSchema.parse> | undefined;
+  // 3-4. Config parse/validate + embedding consistency + provider key.
   try {
     const raw = parseYaml(readFileSync(configPath, 'utf-8'));
-    const parsed = ConfigSchema.safeParse(raw);
-    if (parsed.success) {
-      parsedData = parsed.data;
-      report.add('pass', 'Config is valid', `${parsed.data.sources.length} source(s)`);
-    } else {
-      report.add('fail', 'Config is valid', `${parsed.error.issues.length} schema error(s)`);
-      for (const issue of parsed.error.issues) {
-        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
-        console.log(`     • ${path}: ${issue.message}`);
-      }
-    }
+    results.push(...checkConfig(raw, process.env));
   } catch (error) {
-    report.add('fail', 'Config parses', error instanceof Error ? error.message : String(error));
+    results.push({
+      status: 'fail',
+      label: 'Config parses',
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 
-  // --- 4. Embedding consistency + provider key ------------------------------
-  if (parsedData) {
-    const provider = parsedData.embeddings.provider as EmbeddingProvider;
-    const embeddingCheck = validateEmbeddingConfig(parsedData.embeddings);
-    if (embeddingCheck.errors.length === 0) {
-      report.add(
-        'pass',
-        'Embedding config',
-        `${parsedData.embeddings.provider}/${parsedData.embeddings.model} (${parsedData.embeddings.dimensions} dims)`
-      );
-    } else {
-      report.add('fail', 'Embedding config', embeddingCheck.errors.join('; '));
-    }
-    for (const w of embeddingCheck.warnings) report.add('warn', 'Embedding config', w);
+  // 5. Vector DB key.
+  results.push(checkEnvVar('PINECONE_API_KEY', process.env));
 
-    // Provider API key env var.
-    const providerSpec = EMBEDDING_PROVIDERS[provider];
-    if (providerSpec) {
-      const keyVar = providerSpec.apiKeyEnvVar;
-      report.add(
-        process.env[keyVar] ? 'pass' : 'fail',
-        `Env: ${keyVar}`,
-        process.env[keyVar] ? 'set' : 'not set'
-      );
-    }
-  }
-
-  // --- 5. Pinecone key ------------------------------------------------------
-  report.add(
-    process.env.PINECONE_API_KEY ? 'pass' : 'fail',
-    'Env: PINECONE_API_KEY',
-    process.env.PINECONE_API_KEY ? 'set' : 'not set'
-  );
-
-  summarise(report);
-}
-
-function summarise(report: Report): void {
-  const { pass, warn, fail } = report.counts;
-  console.log('\n' + '═'.repeat(50));
-  console.log(`\n${pass} passed, ${warn} warning(s), ${fail} failed`);
-  if (report.failed) {
-    console.error('\n❌ Environment is NOT ready. Fix the failed checks above.');
-    process.exit(1);
-  }
-  console.log('\n✅ Environment is ready.');
+  render(results);
+  summarise(results);
 }
 
 main();
