@@ -9,43 +9,94 @@
 
 import type { ContextMCPConfig } from './schema.js';
 
-export type EmbeddingProvider = 'openai' | 'gemini';
+export type EmbeddingProvider = 'openai' | 'gemini' | 'cohere' | 'voyage' | 'ollama';
+
+/**
+ * How a model's output dimensions are constrained.
+ *
+ * - `fixed`: the model emits exactly these dimensions and nothing else
+ *   (e.g. `text-embedding-ada-002` is always 1536). A configured value outside
+ *   the list is a hard error.
+ * - `range`: the model supports reducing/choosing the output dimension to any
+ *   integer within `[min, max]` (e.g. OpenAI's `text-embedding-3-*` accept any
+ *   `dimensions` from 1..max via the API param). Only out-of-range values are
+ *   errors; in-range non-default values are allowed silently.
+ */
+export type DimensionConstraint =
+  | { kind: 'fixed'; values: number[]; defaultDimension: number }
+  | { kind: 'range'; min: number; max: number; defaultDimension: number };
 
 export interface ModelSpec {
-  /** Allowed output dimensions for this model. */
-  dimensions: number[];
-  /** Default/recommended dimension. */
-  defaultDimension: number;
+  /** How output dimensions are constrained for this model. */
+  dimensions: DimensionConstraint;
 }
 
 export interface ProviderSpec {
-  /** Environment variable holding the provider's API key. */
-  apiKeyEnvVar: string;
+  /**
+   * Environment variable holding the provider's API key, or `null` for
+   * providers that need no key (e.g. a local Ollama server).
+   */
+  apiKeyEnvVar: string | null;
   /** Known models keyed by model id. */
   models: Record<string, ModelSpec>;
 }
 
+const range = (min: number, max: number, defaultDimension: number): DimensionConstraint => ({
+  kind: 'range',
+  min,
+  max,
+  defaultDimension,
+});
+
+const fixed = (values: number[], defaultDimension: number): DimensionConstraint => ({
+  kind: 'fixed',
+  values,
+  defaultDimension,
+});
+
 /**
  * Known embedding providers and their supported models/dimensions.
  *
- * OpenAI's text-embedding-3-* models support reducing dimensions via the
- * `dimensions` param. Gemini's gemini-embedding-2-preview supports
- * outputDimensionality up to 3072.
+ * OpenAI's `text-embedding-3-*` and Gemini's embedding models support reducing
+ * dimensions to any value within a range via an API param, so they use `range`
+ * constraints rather than a fixed whitelist — picking e.g. 1536 to match an
+ * existing index is valid and must not be rejected. Older fixed-size models
+ * (`text-embedding-ada-002`) use exact `fixed` lists.
+ *
+ * Providers without a known model registry (cohere/voyage/ollama) are still
+ * listed so the provider itself validates; their model dimensions are treated
+ * as unknown (a warning, never a hard error) since they evolve quickly and run
+ * against user-chosen local/hosted models.
  */
 export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
   openai: {
     apiKeyEnvVar: 'OPENAI_API_KEY',
     models: {
-      'text-embedding-3-large': { dimensions: [256, 1024, 3072], defaultDimension: 3072 },
-      'text-embedding-3-small': { dimensions: [512, 1536], defaultDimension: 1536 },
-      'text-embedding-ada-002': { dimensions: [1536], defaultDimension: 1536 },
+      'text-embedding-3-large': { dimensions: range(1, 3072, 3072) },
+      'text-embedding-3-small': { dimensions: range(1, 1536, 1536) },
+      'text-embedding-ada-002': { dimensions: fixed([1536], 1536) },
     },
   },
   gemini: {
     apiKeyEnvVar: 'GEMINI_API_KEY',
     models: {
-      'gemini-embedding-2-preview': { dimensions: [768, 1536, 3072], defaultDimension: 3072 },
+      'gemini-embedding-2-preview': { dimensions: range(1, 3072, 3072) },
     },
+  },
+  cohere: {
+    apiKeyEnvVar: 'COHERE_API_KEY',
+    // Cohere embedding models evolve quickly; dimensions are validated against
+    // the index at reindex time rather than a hardcoded list here.
+    models: {},
+  },
+  voyage: {
+    apiKeyEnvVar: 'VOYAGE_API_KEY',
+    models: {},
+  },
+  ollama: {
+    // Local server — no API key required.
+    apiKeyEnvVar: null,
+    models: {},
   },
 };
 
@@ -89,25 +140,40 @@ export function validateEmbeddingConfig(
     return { errors, warnings };
   }
 
-  // 2. Model: warn (not error) on unknown model so new models aren't blocked,
-  //    but validate dimensions strictly when the model is known.
+  // 2. Model: warn (not error) on unknown model so new models aren't blocked.
+  //    For known models, validate dimensions against the model's constraint:
+  //    `fixed` models reject any value off the list; `range` models reject only
+  //    out-of-range values (so e.g. OpenAI dimension reduction stays valid).
+  const knownModels = Object.keys(providerSpec.models);
   const modelSpec = providerSpec.models[model];
   if (!modelSpec) {
-    warnings.push(
-      `Unknown model "${model}" for provider "${provider}". Known models: ${Object.keys(
-        providerSpec.models
-      ).join(', ')}. Skipping dimension validation for this model.`
-    );
-  } else if (!modelSpec.dimensions.includes(dimensions)) {
-    errors.push(
-      `embeddings.dimensions=${dimensions} is not valid for ${provider}/${model}. ` +
-        `Supported dimensions: ${modelSpec.dimensions.join(', ')} ` +
-        `(recommended: ${modelSpec.defaultDimension}).`
-    );
+    // Providers with no registered models (cohere/voyage/ollama) shouldn't emit
+    // a noisy "known models: " list — dimensions are validated against the
+    // index at reindex time for those.
+    if (knownModels.length > 0) {
+      warnings.push(
+        `Unknown model "${model}" for provider "${provider}". Known models: ${knownModels.join(
+          ', '
+        )}. Skipping dimension validation for this model.`
+      );
+    }
+  } else {
+    const c = modelSpec.dimensions;
+    if (c.kind === 'fixed' && !c.values.includes(dimensions)) {
+      errors.push(
+        `embeddings.dimensions=${dimensions} is not valid for ${provider}/${model}. ` +
+          `Supported dimensions: ${c.values.join(', ')} (recommended: ${c.defaultDimension}).`
+      );
+    } else if (c.kind === 'range' && (dimensions < c.min || dimensions > c.max)) {
+      errors.push(
+        `embeddings.dimensions=${dimensions} is out of range for ${provider}/${model}. ` +
+          `Supported range: ${c.min}–${c.max} (recommended: ${c.defaultDimension}).`
+      );
+    }
   }
 
-  // 3. Optional env-var presence check.
-  if (options.checkEnv) {
+  // 3. Optional env-var presence check (skipped for keyless providers).
+  if (options.checkEnv && providerSpec.apiKeyEnvVar) {
     const env = options.env ?? process.env;
     if (!env[providerSpec.apiKeyEnvVar]) {
       errors.push(
