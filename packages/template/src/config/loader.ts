@@ -8,6 +8,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { parse as parseYaml } from 'yaml';
 import { ConfigSchema, ContextMCPConfig } from './schema.js';
+import { validateEmbeddingConfig } from './validate-embeddings.js';
 
 // =============================================================================
 // CONSTANTS
@@ -101,6 +102,20 @@ export function loadConfig(customPath?: string): ContextMCPConfig {
     for (const issue of parsed.error.issues) {
       const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
       console.error(`   • ${path}: ${issue.message}`);
+    }
+    process.exit(1);
+  }
+
+  // Semantic validation beyond Zod's structural checks: catch embedding
+  // provider/model/dimension mismatches before a reindex starts.
+  const embeddingCheck = validateEmbeddingConfig(parsed.data.embeddings);
+  for (const warning of embeddingCheck.warnings) {
+    console.warn(`⚠️  ${warning}`);
+  }
+  if (embeddingCheck.errors.length > 0) {
+    console.error('❌ Embedding configuration is invalid:');
+    for (const error of embeddingCheck.errors) {
+      console.error(`   • ${error}`);
     }
     process.exit(1);
   }
