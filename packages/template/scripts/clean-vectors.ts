@@ -16,32 +16,13 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { clearPineconeIndex, initPineconeIndex, getPineconeStats } from '../src/embeddings/core.js';
 import { loadConfig } from '../src/config/loader.js';
+import {
+  parseCleanArgs,
+  resolveDeletion,
+} from '../src/config/clean-vectors-cli.js';
 
-interface CliArgs {
-  config?: string;
-  force: boolean;
-  help: boolean;
-}
-
-function parseArgs(): CliArgs {
-  const args: CliArgs = {
-    force: false,
-    help: false,
-  };
-
-  for (let i = 2; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-
-    if (arg === '--help' || arg === '-h') {
-      args.help = true;
-    } else if (arg === '--force' || arg === '-f') {
-      args.force = true;
-    } else if (arg === '--config' || arg === '-c') {
-      args.config = process.argv[++i];
-    }
-  }
-
-  return args;
+function parseArgs() {
+  return parseCleanArgs(process.argv.slice(2));
 }
 
 function printHelp(): void {
@@ -69,14 +50,17 @@ Examples:
  * Ask the user to confirm a destructive action by re-typing the index name.
  * Returns true only on an exact match. Aborts (false) on EOF / non-interactive
  * stdin so the script never deletes silently without --force.
+ *
+ * The actual decision is delegated to the pure `resolveDeletion` helper.
  */
 async function confirmDeletion(indexName: string, vectorCount: number): Promise<boolean> {
   if (!input.isTTY) {
+    const decision = resolveDeletion({ force: false, isTTY: false, indexName });
     console.error(
       '\n❌ Refusing to delete: stdin is not interactive and --force was not passed.'
     );
     console.error('   Re-run with --force to delete in a non-interactive environment.');
-    return false;
+    return decision.proceed;
   }
 
   console.log('\n⚠️  This will permanently delete ALL vectors from the index.');
@@ -89,7 +73,7 @@ async function confirmDeletion(indexName: string, vectorCount: number): Promise<
     const answer = await rl.question(
       `Type the index name "${indexName}" to confirm deletion: `
     );
-    return answer.trim() === indexName;
+    return resolveDeletion({ force: false, isTTY: true, indexName, answer }).proceed;
   } finally {
     rl.close();
   }
