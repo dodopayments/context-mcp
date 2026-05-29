@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Workspace packages use the root lockfile, not nested ones
+packages/*/package-lock.json
+
 # Build output
 dist/
 .next/

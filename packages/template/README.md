@@ -127,6 +127,17 @@ npm run deploy
 | `npm run reindex -- --source=<name>` | Index specific source           |
 | `npm run clean:vectors`              | Clear all vectors from Pinecone |
 | `npm run typecheck`                  | TypeScript type checking        |
+| `npm test`                           | Run unit tests (Vitest)         |
+| `npm run test:watch`                 | Run unit tests in watch mode    |
+
+## Testing
+
+Unit tests are written with [Vitest](https://vitest.dev) and live next to the
+code they cover (`*.test.ts`). Run the suite with:
+
+```bash
+npm test
+```
 
 ## Documentation
 
