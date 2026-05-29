@@ -83,6 +83,82 @@ export async function generateEmbeddingsGemini(
   );
 }
 
+/**
+ * Generate embeddings for a batch of texts using Cohere's Embed API.
+ * Uses the REST API directly (no SDK dependency) and the shared retry policy.
+ *
+ * @see https://docs.cohere.com/reference/embed
+ */
+export async function generateEmbeddingsCohere(
+  apiKey: string,
+  model: string,
+  texts: string[]
+): Promise<number[][]> {
+  return withRetry(
+    async () => {
+      const res = await fetch('https://api.cohere.com/v2/embed', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          texts,
+          input_type: 'search_document',
+          embedding_types: ['float'],
+        }),
+      });
+      if (!res.ok) {
+        throw Object.assign(new Error(`Cohere embed failed: ${res.status} ${res.statusText}`), {
+          status: res.status,
+          headers: res.headers,
+        });
+      }
+      const data = (await res.json()) as { embeddings?: { float?: number[][] } };
+      const out = data.embeddings?.float;
+      if (!out) throw new Error('Cohere embed: unexpected response shape (no embeddings.float)');
+      return out;
+    },
+    { label: 'Cohere embed' }
+  );
+}
+
+/**
+ * Generate embeddings for a batch of texts using Voyage AI's embeddings API.
+ * Uses the REST API directly (no SDK dependency) and the shared retry policy.
+ *
+ * @see https://docs.voyageai.com/reference/embeddings-api
+ */
+export async function generateEmbeddingsVoyage(
+  apiKey: string,
+  model: string,
+  texts: string[]
+): Promise<number[][]> {
+  return withRetry(
+    async () => {
+      const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model, input: texts, input_type: 'document' }),
+      });
+      if (!res.ok) {
+        throw Object.assign(new Error(`Voyage embed failed: ${res.status} ${res.statusText}`), {
+          status: res.status,
+          headers: res.headers,
+        });
+      }
+      const data = (await res.json()) as { data?: { embedding: number[] }[] };
+      if (!data.data) throw new Error('Voyage embed: unexpected response shape (no data)');
+      return data.data.map(d => d.embedding);
+    },
+    { label: 'Voyage embed' }
+  );
+}
+
 
 // =============================================================================
 // PINECONE FUNCTIONS

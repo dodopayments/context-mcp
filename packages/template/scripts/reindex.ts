@@ -29,6 +29,8 @@ import {
   clearPineconeIndex,
   generateEmbeddingsOpenAI,
   generateEmbeddingsGemini,
+  generateEmbeddingsCohere,
+  generateEmbeddingsVoyage,
   chunkToRecord,
   prepareChunkForEmbedding,
   sleep,
@@ -108,6 +110,14 @@ type EmbedClient = {
   gemini: GoogleGenAI;
   model: string;
   dimensions: number;
+} | {
+  provider: 'cohere';
+  apiKey: string;
+  model: string;
+} | {
+  provider: 'voyage';
+  apiKey: string;
+  model: string;
 }
 
 async function embedAndUpload(
@@ -131,10 +141,20 @@ async function embedAndUpload(
 
     // Generate embeddings with the configured provider
     let embeddings: number[][];
-    if (client.provider === 'gemini') {
-      embeddings = await generateEmbeddingsGemini(client.gemini, client.model, texts, client.dimensions);
-    } else {
-      embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model);
+    switch (client.provider) {
+      case 'gemini':
+        embeddings = await generateEmbeddingsGemini(client.gemini, client.model, texts, client.dimensions);
+        break;
+      case 'cohere':
+        embeddings = await generateEmbeddingsCohere(client.apiKey, client.model, texts);
+        break;
+      case 'voyage':
+        embeddings = await generateEmbeddingsVoyage(client.apiKey, client.model, texts);
+        break;
+      case 'openai':
+      default:
+        embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model);
+        break;
     }
 
     // Convert to Pinecone records
@@ -201,22 +221,39 @@ async function reindex(): Promise<void> {
   let embedClient: EmbedClient | undefined;
 
   if (!args.dryRun) {
-    validateEmbeddingEnv(config.embeddings.provider as 'openai' | 'gemini');
+    validateEmbeddingEnv(config.embeddings.provider);
     pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
 
-    if (config.embeddings.provider === 'gemini') {
-      embedClient = {
-        provider: 'gemini',
-        gemini: new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! }),
-        model: config.embeddings.model,
-        dimensions: config.embeddings.dimensions,
-      };
-    } else {
-      embedClient = {
-        provider: 'openai',
-        openai: new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }),
-        model: config.embeddings.model,
-      };
+    switch (config.embeddings.provider) {
+      case 'gemini':
+        embedClient = {
+          provider: 'gemini',
+          gemini: new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! }),
+          model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
+        };
+        break;
+      case 'cohere':
+        embedClient = {
+          provider: 'cohere',
+          apiKey: process.env.COHERE_API_KEY!,
+          model: config.embeddings.model,
+        };
+        break;
+      case 'voyage':
+        embedClient = {
+          provider: 'voyage',
+          apiKey: process.env.VOYAGE_API_KEY!,
+          model: config.embeddings.model,
+        };
+        break;
+      default:
+        embedClient = {
+          provider: 'openai',
+          openai: new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }),
+          model: config.embeddings.model,
+        };
+        break;
     }
 
     // Initialize and optionally clear Pinecone

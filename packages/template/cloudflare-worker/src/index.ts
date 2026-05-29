@@ -29,6 +29,8 @@ interface Env {
   OPENAI_API_KEY: string;
   PINECONE_API_KEY: string;
   GEMINI_API_KEY: string;
+  COHERE_API_KEY: string;
+  VOYAGE_API_KEY: string;
 
   // Configuration
   SERVER_NAME: string;
@@ -80,6 +82,39 @@ async function generateQueryEmbedding(env: Env, query: string): Promise<number[]
       },
     });
     return response.embeddings?.[0]?.values ?? [];
+  }
+
+  if (provider === 'cohere') {
+    const res = await fetch('https://api.cohere.com/v2/embed', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.COHERE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: env.EMBEDDING_MODEL,
+        texts: [query],
+        input_type: 'search_query',
+        embedding_types: ['float'],
+      }),
+    });
+    if (!res.ok) throw new Error(`Cohere embed failed: ${res.status} ${res.statusText}`);
+    const data = (await res.json()) as { embeddings?: { float?: number[][] } };
+    return data.embeddings?.float?.[0] ?? [];
+  }
+
+  if (provider === 'voyage') {
+    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: env.EMBEDDING_MODEL, input: [query], input_type: 'query' }),
+    });
+    if (!res.ok) throw new Error(`Voyage embed failed: ${res.status} ${res.statusText}`);
+    const data = (await res.json()) as { data?: { embedding: number[] }[] };
+    return data.data?.[0]?.embedding ?? [];
   }
 
   // Default: OpenAI

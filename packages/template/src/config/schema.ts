@@ -89,7 +89,7 @@ const VectorDbSchema = z.object({
 
 // Embedding settings
 const EmbeddingsSchema = z.object({
-  provider: z.enum(['openai', 'gemini']).default('openai'),
+  provider: z.enum(['openai', 'gemini', 'cohere', 'voyage']).default('openai'),
   model: z.string().default('text-embedding-3-large'),
   dimensions: z.number().default(3072),
 });

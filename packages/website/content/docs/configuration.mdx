@@ -85,6 +85,28 @@ embeddings:
 
 **Cost note:** `text-embedding-3-large` costs ~$0.13 per 1M tokens. For a typical docs site (~500 files), expect ~$0.50-1.00 per full reindex.
 
+### Supported Providers
+
+| Provider | Example model                | Required env var |
+| -------- | ---------------------------- | ---------------- |
+| `openai` | `text-embedding-3-large`     | `OPENAI_API_KEY` |
+| `gemini` | `gemini-embedding-2-preview` | `GEMINI_API_KEY` |
+| `cohere` | `embed-v4.0`                 | `COHERE_API_KEY` |
+| `voyage` | `voyage-3`                   | `VOYAGE_API_KEY` |
+
+Set `embeddings.provider`, `embeddings.model`, and `embeddings.dimensions` to
+match your chosen provider, and set the corresponding API key. The Cloudflare
+worker reads the same provider via the `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL`
+/ `EMBEDDING_DIMENSIONS` variables — keep them in sync.
+
+```yaml
+# Example: Voyage AI
+embeddings:
+  provider: voyage
+  model: voyage-3
+  dimensions: 1024
+```
+
 ## Sources
 
 Define where your documentation lives. You can have multiple sources.
