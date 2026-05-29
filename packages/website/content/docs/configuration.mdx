@@ -109,6 +109,24 @@ sources:
       - CHANGELOG.md
 ```
 
+### Website (Crawler)
+
+Crawl a live documentation website and index its pages. Page discovery prefers
+`sitemap.xml`, falling back to a same-origin breadth-first crawl. Use the `html`
+parser, which strips boilerplate (nav/header/footer) and converts to Markdown.
+
+```yaml
+sources:
+  - name: docs-site
+    type: website
+    url: https://docs.example.com
+    parser: html
+    baseUrl: https://docs.example.com
+    sitemap: https://docs.example.com/sitemap.xml # optional, defaults to <origin>/sitemap.xml
+    maxPages: 100 # optional, default 100
+    crawlDepth: 3 # optional, default 3 (only used when crawling without a sitemap)
+```
+
 ### Parser Types
 
 | Parser     | Use For                 | Features                                    |
@@ -116,6 +134,7 @@ sources:
 | `mdx`      | MDX/Markdown docs       | Extracts frontmatter, preserves code blocks |
 | `markdown` | Plain markdown, READMEs | Simple parsing, language hints              |
 | `openapi`  | Swagger/OpenAPI specs   | Generates docs from API definitions         |
+| `html`     | Raw HTML / crawled docs | Strips boilerplate, converts to Markdown    |
 
 ### Language Hints
 
