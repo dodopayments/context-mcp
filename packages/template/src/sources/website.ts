@@ -112,19 +112,41 @@ export function urlToFilename(url: string): string {
   return `${safe}.html`;
 }
 
+/**
+ * Whether a fetch to `url` is permitted given an optional origin restriction.
+ * Pure and unit-tested; used to gate both the initial request URL and the
+ * final URL after redirects. With no restriction, everything is allowed.
+ */
+export function isFetchAllowed(url: string, allowedOrigin?: string): boolean {
+  if (!allowedOrigin) return true;
+  return isSameOrigin(url, allowedOrigin);
+}
+
 // =============================================================================
 // FETCHING
 // =============================================================================
 
-async function fetchText(url: string): Promise<string | null> {
+/**
+ * Fetch text from a URL with a timeout. When `allowedOrigin` is provided, the
+ * request is refused if the URL — or the final URL after any redirects — is not
+ * same-origin. This prevents SSRF where a same-origin URL 302-redirects to an
+ * internal host (e.g. http://169.254.169.254/ cloud metadata).
+ */
+async function fetchText(url: string, allowedOrigin?: string): Promise<string | null> {
+  if (!isFetchAllowed(url, allowedOrigin)) return null;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, redirect: 'follow' });
+    // Reject cross-origin redirect targets.
+    if (res.url && !isFetchAllowed(res.url, allowedOrigin)) return null;
     if (!res.ok) return null;
     const contentType = res.headers.get('content-type') || '';
-    // Only collect HTML pages.
-    if (!contentType.includes('html') && contentType !== '') return null;
+    // Only collect HTML/XML pages.
+    if (!contentType.includes('html') && !contentType.includes('xml') && contentType !== '') {
+      return null;
+    }
     return await res.text();
   } catch {
     return null;
@@ -136,20 +158,28 @@ async function fetchText(url: string): Promise<string | null> {
 /**
  * Discover page URLs via sitemap.xml (one level of sitemap-index recursion),
  * returning null if no sitemap is found so the caller can fall back to crawling.
+ *
+ * All sitemap and child-sitemap fetches are constrained to `origin` so a
+ * malicious or compromised sitemap can't point the fetcher at internal hosts.
  */
-async function discoverViaSitemap(sitemapUrl: string, maxPages: number): Promise<string[] | null> {
-  const xml = await fetchText(sitemapUrl);
+async function discoverViaSitemap(
+  sitemapUrl: string,
+  maxPages: number,
+  origin: string
+): Promise<string[] | null> {
+  const xml = await fetchText(sitemapUrl, origin);
   if (!xml || !xml.includes('<loc>')) return null;
 
   const entries = parseSitemapUrls(xml);
   const pageUrls: string[] = [];
 
-  // A sitemap index points at child sitemaps (also .xml). Recurse one level.
+  // A sitemap index points at child sitemaps (also .xml). Recurse one level,
+  // but only into same-origin child sitemaps.
   const childSitemaps = entries.filter(u => u.toLowerCase().endsWith('.xml'));
   if (childSitemaps.length > 0 && childSitemaps.length === entries.length) {
     for (const child of childSitemaps) {
       if (pageUrls.length >= maxPages) break;
-      const childXml = await fetchText(child);
+      const childXml = await fetchText(child, origin);
       if (childXml) pageUrls.push(...parseSitemapUrls(childXml));
     }
   } else {
@@ -169,6 +199,7 @@ async function discoverViaCrawl(
 ): Promise<{ url: string; html: string }[]> {
   const results: { url: string; html: string }[] = [];
   const visited = new Set<string>();
+  const origin = new URL(baseUrl).origin;
   let frontier: string[] = [new URL(baseUrl).toString()];
 
   for (let depth = 0; depth <= maxDepth && frontier.length > 0; depth++) {
@@ -178,7 +209,8 @@ async function discoverViaCrawl(
       if (visited.has(url)) continue;
       visited.add(url);
 
-      const html = await fetchText(url);
+      // Same-origin bound (also guards against cross-origin redirects).
+      const html = await fetchText(url, origin);
       if (!html) continue;
       results.push({ url, html });
 
@@ -224,14 +256,14 @@ export async function fetchWebsiteSource(source: SourceConfig): Promise<FetchedS
 
   // 1. Try sitemap-based discovery first.
   const sitemapUrl = source.sitemap || `${origin}/sitemap.xml`;
-  const sitemapUrls = await discoverViaSitemap(sitemapUrl, maxPages);
+  const sitemapUrls = await discoverViaSitemap(sitemapUrl, maxPages, origin);
 
   let pages: { url: string; html: string }[] = [];
   if (sitemapUrls && sitemapUrls.length > 0) {
     for (const url of sitemapUrls) {
       if (pages.length >= maxPages) break;
       if (!isSameOrigin(url, origin)) continue;
-      const html = await fetchText(url);
+      const html = await fetchText(url, origin);
       if (html) pages.push({ url, html });
     }
   }

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseSitemapUrls, isSameOrigin, extractLinks, urlToFilename } from './website.js';
+import {
+  parseSitemapUrls,
+  isSameOrigin,
+  extractLinks,
+  urlToFilename,
+  isFetchAllowed,
+} from './website.js';
 
 describe('parseSitemapUrls', () => {
   it('extracts <loc> URLs from a urlset sitemap', () => {
@@ -89,5 +95,37 @@ describe('urlToFilename', () => {
     const b = urlToFilename('https://x.com/p?id=2');
     expect(a).not.toBe(b);
     expect(a.endsWith('.html')).toBe(true);
+  });
+});
+
+describe('isFetchAllowed (SSRF guard)', () => {
+  const origin = 'https://docs.example.com';
+
+  it('allows same-origin URLs', () => {
+    expect(isFetchAllowed('https://docs.example.com/page', origin)).toBe(true);
+    expect(isFetchAllowed('https://docs.example.com/sitemap.xml', origin)).toBe(true);
+  });
+
+  it('blocks cloud metadata and internal hosts', () => {
+    expect(isFetchAllowed('http://169.254.169.254/latest/meta-data/', origin)).toBe(false);
+    expect(isFetchAllowed('http://localhost:8080/admin', origin)).toBe(false);
+    expect(isFetchAllowed('http://10.0.0.5/internal', origin)).toBe(false);
+  });
+
+  it('blocks a different external origin (e.g. a malicious sitemap <loc>)', () => {
+    expect(isFetchAllowed('https://evil.com/sitemap.xml', origin)).toBe(false);
+  });
+
+  it('blocks a same-host but different-scheme/port origin', () => {
+    expect(isFetchAllowed('http://docs.example.com/page', origin)).toBe(false);
+    expect(isFetchAllowed('https://docs.example.com:8443/page', origin)).toBe(false);
+  });
+
+  it('blocks unparseable URLs', () => {
+    expect(isFetchAllowed('not a url', origin)).toBe(false);
+  });
+
+  it('allows anything when no origin restriction is given', () => {
+    expect(isFetchAllowed('http://169.254.169.254/', undefined)).toBe(true);
   });
 });
