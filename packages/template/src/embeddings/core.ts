@@ -4,6 +4,7 @@
 
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { get_encoding } from 'tiktoken';
 import {
   EMBEDDING_MODEL,
@@ -16,6 +17,7 @@ import {
 } from '../config/index.js';
 import { DocChunk } from '../types/index.js';
 
+// cl100k_base approximates both OpenAI and Gemini tokenization (~8192 token limit each)
 const encoder = get_encoding(EMBEDDING_ENCODING);
 
 // =============================================================================
@@ -48,30 +50,39 @@ export interface EmbeddingRecord {
 /**
  * Generate embeddings for a batch of texts using OpenAI
  */
-export async function generateEmbeddings(
+export async function generateEmbeddingsOpenAI(
   openai: OpenAI,
-  texts: string[]
+  texts: string[],
+  model: string
 ): Promise<number[][]> {
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: texts,
-  });
-  return response.data.map(e => e.embedding);
+  return withRetry(() =>
+    openai.embeddings.create({ model, input: texts })
+      .then(response => response.data.map(e => e.embedding))
+  );
 }
 
 /**
- * Generate embedding for a single query
+ * Generate embeddings for a batch of document texts using Gemini.
+ * Retries on 429 rate-limit errors with exponential backoff.
  */
-export async function generateQueryEmbedding(
-  openai: OpenAI,
-  query: string
-): Promise<number[]> {
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: [query],
-  });
-  return response.data[0].embedding;
+export async function generateEmbeddingsGemini(
+  gemini: GoogleGenAI,
+  model: string,
+  texts: string[],
+  dimensions: number
+): Promise<number[][]> {
+  return withRetry(() =>
+    gemini.models.embedContent({
+      model,
+      contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+      config: {
+        taskType: 'RETRIEVAL_DOCUMENT' as const,
+        outputDimensionality: dimensions,
+      },
+    }).then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+  );
 }
+
 
 // =============================================================================
 // PINECONE FUNCTIONS
@@ -273,4 +284,27 @@ export function prepareChunkForEmbedding(chunk: DocChunk): string {
  */
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry an async operation with exponential backoff on 429 rate-limit errors.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 5,
+  baseDelayMs = 2000
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      if (status !== 429 || attempt === maxAttempts) throw err;
+      const delay = baseDelayMs * 2 ** (attempt - 1);
+      console.log(`\n   ⏳ Rate limited, retrying in ${delay / 1000}s (attempt ${attempt}/${maxAttempts})...`);
+      await sleep(delay);
+    }
+  }
+  // unreachable, but satisfies TypeScript
+  throw new Error('withRetry: exhausted attempts');
 }

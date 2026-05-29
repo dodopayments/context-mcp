@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 
 import { loadConfig } from '../src/config/loader.js';
 import { fetchSource, cleanupSources } from '../src/sources/index.js';
@@ -26,7 +27,8 @@ import type { DocChunk } from '../src/types/index.js';
 import {
   initPineconeIndex,
   clearPineconeIndex,
-  generateEmbeddings,
+  generateEmbeddingsOpenAI,
+  generateEmbeddingsGemini,
   chunkToRecord,
   prepareChunkForEmbedding,
   sleep,
@@ -97,10 +99,21 @@ Examples:
 // EMBEDDING & UPLOAD
 // =============================================================================
 
+type EmbedClient = {
+  provider: 'openai';
+  openai: OpenAI;
+  model: string;
+} | {
+  provider: 'gemini';
+  gemini: GoogleGenAI;
+  model: string;
+  dimensions: number;
+}
+
 async function embedAndUpload(
   chunks: DocChunk[],
   pinecone: Pinecone,
-  openai: OpenAI,
+  client: EmbedClient,
   indexName: string,
   batchSize: number
 ): Promise<void> {
@@ -116,8 +129,13 @@ async function embedAndUpload(
     // Prepare texts for embedding
     const texts = batch.map(chunk => prepareChunkForEmbedding(chunk));
 
-    // Generate embeddings
-    const embeddings = await generateEmbeddings(openai, texts);
+    // Generate embeddings with the configured provider
+    let embeddings: number[][];
+    if (client.provider === 'gemini') {
+      embeddings = await generateEmbeddingsGemini(client.gemini, client.model, texts, client.dimensions);
+    } else {
+      embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model);
+    }
 
     // Convert to Pinecone records
     const records = batch.map((chunk, idx) => chunkToRecord(chunk, embeddings[idx]));
@@ -163,11 +181,6 @@ async function reindex(): Promise<void> {
   const { getChunkConfigFromConfig } = await import('../src/parser/core/config.js');
   const chunkConfig = getChunkConfigFromConfig(config);
 
-  // Validate environment (unless dry run)
-  if (!args.dryRun) {
-    validateEmbeddingEnv();
-  }
-
   // Filter sources if --source flag is provided
   let sources = config.sources;
   if (args.source) {
@@ -185,11 +198,26 @@ async function reindex(): Promise<void> {
 
   // Initialize clients (unless dry run)
   let pinecone: Pinecone | undefined;
-  let openai: OpenAI | undefined;
+  let embedClient: EmbedClient | undefined;
 
   if (!args.dryRun) {
+    validateEmbeddingEnv(config.embeddings.provider as 'openai' | 'gemini');
     pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+    if (config.embeddings.provider === 'gemini') {
+      embedClient = {
+        provider: 'gemini',
+        gemini: new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! }),
+        model: config.embeddings.model,
+        dimensions: config.embeddings.dimensions,
+      };
+    } else {
+      embedClient = {
+        provider: 'openai',
+        openai: new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }),
+        model: config.embeddings.model,
+      };
+    }
 
     // Initialize and optionally clear Pinecone
     const pineconeConfig = config.vectordb.pinecone;
@@ -267,14 +295,14 @@ async function reindex(): Promise<void> {
   }
 
   // Upload if not dry run
-  if (!args.dryRun && allChunks.length > 0 && pinecone && openai) {
+  if (!args.dryRun && allChunks.length > 0 && pinecone && embedClient) {
     console.log('');
-    console.log('🔄 Generating embeddings and uploading...');
+    console.log(`🔄 Generating embeddings (${config.embeddings.provider}) and uploading...`);
 
     await embedAndUpload(
       allChunks,
       pinecone,
-      openai,
+      embedClient,
       config.vectordb.indexName,
       config.reindex.batchSize || DEFAULT_BATCH_SIZE
     );

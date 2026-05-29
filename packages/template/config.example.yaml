@@ -19,8 +19,12 @@ vectordb:
 # EMBEDDINGS
 # =============================================================================
 embeddings:
-  provider: openai
-  model: text-embedding-3-large
+  # provider: openai            # Requires OPENAI_API_KEY
+  # model: text-embedding-3-large
+  # dimensions: 3072
+
+  provider: gemini              # Requires GEMINI_API_KEY
+  model: gemini-embedding-2-preview
   dimensions: 3072
 
 # =============================================================================
