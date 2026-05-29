@@ -182,6 +182,29 @@ export async function clearPineconeIndex(
 }
 
 /**
+ * Delete specific vectors by id from a Pinecone index.
+ * Used by incremental reindexing to remove chunks that no longer exist.
+ * Ids are deleted in batches to stay within Pinecone request limits.
+ *
+ * @param pc - Pinecone client
+ * @param indexName - Name of the index (from config)
+ * @param ids - Vector ids to delete (already sanitized to match stored ids)
+ */
+export async function deletePineconeVectors(
+  pc: Pinecone,
+  indexName: string,
+  ids: string[],
+  batchSize = 1000
+): Promise<void> {
+  if (ids.length === 0) return;
+  const index = pc.index(indexName);
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    await index.deleteMany(batch);
+  }
+}
+
+/**
  * Get current index statistics
  * @param pc - Pinecone client
  * @param indexName - Name of the index (from config)

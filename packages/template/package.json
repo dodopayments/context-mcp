@@ -7,6 +7,7 @@
   "scripts": {
     "reindex": "tsx scripts/reindex.ts",
     "reindex:dry": "tsx scripts/reindex.ts --dry-run",
+    "reindex:incremental": "tsx scripts/reindex.ts --incremental",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

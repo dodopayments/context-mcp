@@ -124,6 +124,7 @@ npm run deploy
 | ------------------------------------ | ------------------------------- |
 | `npm run reindex`                    | Index all documentation sources |
 | `npm run reindex:dry`                | Dry run (no uploads)            |
+| `npm run reindex:incremental`        | Only embed/upload changed chunks |
 | `npm run reindex -- --source=<name>` | Index specific source           |
 | `npm run clean:vectors`              | Clear all vectors from Pinecone |
 | `npm run typecheck`                  | TypeScript type checking        |

@@ -112,6 +112,45 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### Incremental Reindex
+
+Full reindexing re-embeds every chunk on every run, which is slow and costly
+for large docs. Use `--incremental` to embed and upload **only the chunks that
+changed** since the last run:
+
+```bash
+npm run reindex -- --incremental
+```
+
+How it works:
+
+- After each run, a manifest (`data/reindex-manifest.json`) records a content
+  hash for every chunk.
+- On the next incremental run, ContextMCP diffs the freshly parsed chunks
+  against the manifest: new/changed chunks are embedded and upserted, removed
+  chunks are deleted from the vector store, and unchanged chunks are skipped.
+- The manifest is written after every non-dry run, so a normal full reindex
+  also seeds it.
+
+To make incremental runs work in CI, persist `data/reindex-manifest.json`
+between runs (commit it, or use an actions cache):
+
+```yaml
+- name: Restore reindex manifest
+  uses: actions/cache@v4
+  with:
+    path: data/reindex-manifest.json
+    key: reindex-manifest
+
+- name: Reindex (incremental)
+  run: npm run reindex -- --incremental
+  env:
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+```
+
+> `--incremental` covers all sources, so it can't be combined with `--source`.
+
 ### Scheduled Reindex
 
 For sources that change externally, add a cron schedule:
