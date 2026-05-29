@@ -11,6 +11,7 @@
     "dev:cli": "npm run dev --workspace=contextmcp",
     "build:cli": "npm run build --workspace=contextmcp",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
