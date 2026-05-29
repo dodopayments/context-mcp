@@ -1,49 +1,36 @@
 /**
  * Clean Vectors Script
  *
- * Removes all vectors from Pinecone index.
+ * Removes all vectors from the configured vector store (Pinecone, Qdrant, ...).
  * Use before manual re-embedding or to reset the index.
  *
  * Usage: npm run clean:vectors
  */
 
-import { Pinecone } from '@pinecone-database/pinecone';
 import 'dotenv/config';
-import { clearPineconeIndex, initPineconeIndex, getPineconeStats } from '../src/embeddings/core.js';
+import { createVectorStore } from '../src/vectorstore/index.js';
 import { loadConfig } from '../src/config/loader.js';
 
 async function main() {
-  console.log('🗑️  Pinecone Vector Cleanup\n');
+  console.log('🗑️  Vector Store Cleanup\n');
   console.log('═'.repeat(50));
 
   // Load configuration
   const config = loadConfig();
 
-  // Validate environment
-  if (!process.env.PINECONE_API_KEY) {
-    console.error('❌ PINECONE_API_KEY not set');
-    console.error('   Create a .env file or set the environment variable.');
-    process.exit(1);
-  }
-
-  const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-
-  // Ensure index exists
+  // Build the configured vector store (validates required env vars internally).
+  const store = createVectorStore(config);
   const indexName = config.vectordb.indexName;
-  console.log(`\n📊 Index: ${indexName}`);
-  const pineconeConfig = config.vectordb.pinecone;
-  await initPineconeIndex(
-    pc,
-    indexName,
-    config.embeddings.dimensions,
-    pineconeConfig?.cloud || 'aws',
-    pineconeConfig?.region || 'us-east-1'
-  );
+  console.log(`\n📊 Provider: ${store.provider}`);
+  console.log(`   Index/collection: ${indexName}`);
+
+  // Ensure the index/collection exists before inspecting it.
+  await store.ensureIndex({ dimension: config.embeddings.dimensions });
 
   // Get current stats
-  const beforeStats = await getPineconeStats(pc, indexName);
+  const beforeStats = await store.stats();
   console.log(`   Current vectors: ${beforeStats.vectorCount.toLocaleString()}`);
-  console.log(`   Dimension: ${beforeStats.dimension}`);
+  if (beforeStats.dimension) console.log(`   Dimension: ${beforeStats.dimension}`);
 
   if (beforeStats.vectorCount === 0) {
     console.log('\n✅ Index is already empty. Nothing to clean.');
@@ -56,13 +43,13 @@ async function main() {
 
   // Clear the index
   console.log('🔄 Clearing vectors...');
-  const result = await clearPineconeIndex(pc, indexName);
+  const result = await store.clear();
 
   if (result.success) {
     console.log(`\n✅ Successfully deleted ${result.vectorCount?.toLocaleString() || 0} vectors`);
-    
+
     // Verify
-    const afterStats = await getPineconeStats(pc, indexName);
+    const afterStats = await store.stats();
     console.log(`   Remaining vectors: ${afterStats.vectorCount.toLocaleString()}`);
   } else {
     console.error('\n❌ Failed to clear vectors');
@@ -75,8 +62,7 @@ async function main() {
   console.log('═'.repeat(50) + '\n');
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error('❌ Fatal error:', error);
   process.exit(1);
 });
-
