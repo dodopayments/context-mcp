@@ -95,11 +95,12 @@ npm run deploy
 
 ## Source Types
 
-| Type     | Description                  |
-| -------- | ---------------------------- |
-| `github` | Fetch from GitHub repository |
-| `local`  | Local file path              |
-| `url`    | Remote URL                   |
+| Type     | Description                          |
+| -------- | ------------------------------------ |
+| `github` | Fetch from GitHub repository         |
+| `gitlab` | Fetch from GitLab (or self-hosted)   |
+| `local`  | Local file path                      |
+| `url`    | Remote URL                           |
 
 ## Project Structure
 
