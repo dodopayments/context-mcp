@@ -9,39 +9,45 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import type { ServerConfig } from './config.js';
+// Runtime-agnostic helpers shared with the Cloudflare worker. Vendored copy —
+// see scripts/sync-shared.mjs and the drift test. Edit the canonical source at
+// packages/template/src/search-core.ts, then `npm run sync:shared`.
+import {
+  type SearchResult,
+  clampLimit,
+  mapMatchToSearchResult,
+  roundScore,
+  formatResults,
+} from './shared/search-core.js';
 
-export interface SearchResult {
-  score: number;
-  title: string;
-  heading: string;
-  content: string;
-  url?: string;
-  method?: string;
-  path?: string;
-  language?: string;
-}
-
-/** Clamp a requested result count into [1, maxTopK], defaulting when unset. */
-export function clampLimit(limit: number | undefined, defaultTopK: number, maxTopK: number): number {
-  return Math.min(Math.max(1, limit ?? defaultTopK), maxTopK);
-}
+// Re-export the shared contract so existing importers (./search.js) are unchanged.
+export { type SearchResult, clampLimit, formatResults };
 
 /** Generate a query embedding using the configured provider. */
-export async function generateQueryEmbedding(config: ServerConfig, query: string): Promise<number[]> {
+export async function generateQueryEmbedding(
+  config: ServerConfig,
+  query: string
+): Promise<number[]> {
   switch (config.embeddingProvider) {
     case 'gemini': {
       const gemini = new GoogleGenAI({ apiKey: config.geminiApiKey });
       const res = await gemini.models.embedContent({
         model: config.embeddingModel,
         contents: [{ parts: [{ text: query }], role: 'user' }],
-        config: { taskType: 'RETRIEVAL_QUERY' as const, outputDimensionality: config.embeddingDimensions },
+        config: {
+          taskType: 'RETRIEVAL_QUERY' as const,
+          outputDimensionality: config.embeddingDimensions,
+        },
       });
       return res.embeddings?.[0]?.values ?? [];
     }
     case 'cohere': {
       const res = await fetch('https://api.cohere.com/v2/embed', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${config.cohereApiKey}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${config.cohereApiKey}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           model: config.embeddingModel,
           texts: [query],
@@ -56,7 +62,10 @@ export async function generateQueryEmbedding(config: ServerConfig, query: string
     case 'voyage': {
       const res = await fetch('https://api.voyageai.com/v1/embeddings', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${config.voyageApiKey}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${config.voyageApiKey}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ model: config.embeddingModel, input: [query], input_type: 'query' }),
       });
       if (!res.ok) throw new Error(`Voyage embed failed: ${res.status}`);
@@ -106,7 +115,7 @@ async function rerank(
 
     return result.data.map(r => ({
       ...docs[r.index],
-      score: Math.round((r.score || 0) * 100) / 100,
+      score: roundScore(r.score),
     }));
   } catch (error) {
     console.error('[Rerank] Failed:', error);
@@ -133,44 +142,11 @@ export async function searchDocs(
   });
 
   const searchResults: SearchResult[] =
-    results.matches?.map(match => ({
-      score: Math.round((match.score || 0) * 100) / 100,
-      title: String(match.metadata?.documentTitle || ''),
-      heading: String(match.metadata?.heading || ''),
-      content: String(match.metadata?.content || ''),
-      url: match.metadata?.sourceUrl as string | undefined,
-      method: match.metadata?.method as string | undefined,
-      path: match.metadata?.path as string | undefined,
-      language: match.metadata?.language as string | undefined,
-    })) || [];
+    results.matches?.map(match => mapMatchToSearchResult(match.score, match.metadata)) || [];
 
   if (searchResults.length > 0 && config.enableRerank) {
     return rerank(pinecone, query, searchResults, returnCount, config);
   }
 
   return searchResults.slice(0, returnCount);
-}
-
-/** Format search results as Markdown for the MCP tool response. */
-export function formatResults(results: SearchResult[], query: string, serverName: string): string {
-  const lines: string[] = [
-    `# ${serverName} Documentation`,
-    `> Query: ${query}`,
-    `> Results: ${results.length}`,
-    '',
-  ];
-  const separator = '-'.repeat(40);
-
-  for (const result of results) {
-    lines.push(separator);
-    lines.push(`## ${result.title}`);
-    if (result.url) lines.push(`Source: ${result.url}`);
-    if (result.method && result.path) lines.push(`API: ${result.method} ${result.path}`);
-    if (result.language) lines.push(`Language: ${result.language}`);
-    lines.push('');
-    lines.push(result.content);
-    lines.push('');
-  }
-
-  return lines.join('\n');
 }

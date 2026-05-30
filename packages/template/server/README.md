@@ -60,3 +60,20 @@ the index was created by `reindex`.
   }
 }
 ```
+
+## Shared search logic
+
+The result-shaping and formatting helpers (`SearchResult`, `clampLimit`,
+`mapMatchToSearchResult`, `roundScore`, `formatResults`) are defined once in the
+canonical module `packages/template/src/search-core.ts` and consumed by both the
+Cloudflare worker and this server so the two can't silently drift.
+
+Because this server's Docker build context is the `server/` directory alone, it
+can't import across the package boundary — instead it ships a **vendored copy**
+at `src/shared/search-core.ts`. To change shared logic:
+
+1. Edit the canonical `packages/template/src/search-core.ts`.
+2. Run `npm run sync:shared` to regenerate the vendored copy.
+
+A drift test (`src/shared/search-core.drift.test.ts`) fails if the copy is stale,
+so CI catches an un-synced change.
