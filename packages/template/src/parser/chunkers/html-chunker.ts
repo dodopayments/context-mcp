@@ -22,6 +22,27 @@ import { parseMarkdownFile } from './markdown-chunker.js';
 
 const HTML_EXTENSIONS = new Set(['.html', '.htm']);
 
+/**
+ * Sidecar file written by the website crawler mapping each staged relative
+ * .html path to the real source URL it came from. Kept in sync with
+ * `URL_MAP_FILENAME` in sources/website.ts.
+ */
+const URL_MAP_FILENAME = '.url-map.json';
+
+/**
+ * Load the crawler's file -> URL map from `dir`, if present. Returns an empty
+ * map for non-crawled sources (e.g. a local directory of .html files).
+ */
+function loadUrlMap(dir: string): Record<string, string> {
+  try {
+    const raw = fs.readFileSync(path.join(dir, URL_MAP_FILENAME), 'utf-8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
 // Elements that are almost never primary documentation content.
 const BOILERPLATE_SELECTORS = [
   'script',
@@ -43,7 +64,12 @@ const MAIN_CONTENT_SELECTORS = ['main', 'article', '[role="main"]', '#content', 
 // FILE DISCOVERY
 // =============================================================================
 
-function findHtmlFiles(dir: string, skipDirs: string[], skipFiles: string[], baseDir = dir): string[] {
+function findHtmlFiles(
+  dir: string,
+  skipDirs: string[],
+  skipFiles: string[],
+  baseDir = dir
+): string[] {
   const files: string[] = [];
   const skipDirsSet = new Set(skipDirs.map(d => d.toLowerCase()));
   const skipFilesSet = new Set(skipFiles.map(f => f.toLowerCase()));
@@ -96,9 +122,7 @@ export function extractMainHtml(html: string): { title: string; contentHtml: str
 
   // Title: prefer <title>, fall back to first <h1>.
   const title =
-    root.querySelector('title')?.text?.trim() ||
-    root.querySelector('h1')?.text?.trim() ||
-    '';
+    root.querySelector('title')?.text?.trim() || root.querySelector('h1')?.text?.trim() || '';
 
   // Remove boilerplate before extracting content.
   for (const selector of BOILERPLATE_SELECTORS) {
@@ -142,9 +166,10 @@ export function parseHTMLSource(
   const stat = fs.statSync(localPath);
 
   // A source may point at a single file (e.g. a URL-fetched page) or a dir.
+  // skipDirs/skipFiles are optional in the schema, so default them defensively.
   const files: string[] = stat.isFile()
     ? [path.basename(localPath)]
-    : findHtmlFiles(localPath, source.skipDirs, source.skipFiles);
+    : findHtmlFiles(localPath, source.skipDirs ?? [], source.skipFiles ?? []);
   const rootDir = stat.isFile() ? path.dirname(localPath) : localPath;
 
   if (files.length === 0) return [];
@@ -152,6 +177,9 @@ export function parseHTMLSource(
   const allChunks: DocChunk[] = [];
   const contextName = source.displayName || source.name;
   const language = source.language || 'unknown';
+
+  // Crawled pages carry an exact file -> URL map; prefer it over reconstruction.
+  const urlMap = loadUrlMap(rootDir);
 
   for (const file of files) {
     const fullPath = path.join(rootDir, file);
@@ -165,8 +193,12 @@ export function parseHTMLSource(
     const { markdown } = htmlToMarkdown(html);
     if (!markdown.trim()) continue;
 
-    // Map the .html file to a clean .html URL on the docs site.
-    const sourceUrl = source.baseUrl ? `${source.baseUrl.replace(/\/$/, '')}/${file}` : '';
+    // Resolve the source URL. Prefer the crawler's exact mapping (preserves
+    // query strings and avoids a synthesized ".html" that 404s); otherwise
+    // fall back to reconstructing from baseUrl + relative path.
+    const relKey = file.split(path.sep).join('/');
+    const sourceUrl =
+      urlMap[relKey] ?? (source.baseUrl ? `${source.baseUrl.replace(/\/$/, '')}/${file}` : '');
 
     const dirName = path.dirname(file);
     const fileContextName =

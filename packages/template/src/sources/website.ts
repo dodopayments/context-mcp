@@ -21,6 +21,11 @@ const TEMP_DIR = path.join(process.cwd(), '.temp-repos');
 const DEFAULT_MAX_PAGES = 100;
 const DEFAULT_CRAWL_DEPTH = 3;
 const FETCH_TIMEOUT_MS = 30000;
+/** Politeness delay between page fetches during a crawl (ms). */
+const DEFAULT_CRAWL_DELAY_MS = 250;
+
+/** Sidecar file (in the staged dir) mapping relative .html path -> real URL. */
+export const URL_MAP_FILENAME = '.url-map.json';
 
 // =============================================================================
 // PURE HELPERS (unit-tested)
@@ -189,18 +194,30 @@ async function discoverViaSitemap(
   return pageUrls.slice(0, maxPages);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
  * Breadth-first same-origin crawl from a base URL, bounded by depth and count.
+ * Inserts a small politeness delay between requests so we don't hammer the
+ * target, and dedups within a level so the same link isn't queued repeatedly.
  */
 async function discoverViaCrawl(
   baseUrl: string,
   maxPages: number,
-  maxDepth: number
+  maxDepth: number,
+  delayMs: number = DEFAULT_CRAWL_DELAY_MS
 ): Promise<{ url: string; html: string }[]> {
   const results: { url: string; html: string }[] = [];
   const visited = new Set<string>();
+  // Tracks URLs already queued (in any level) so the frontier can't accumulate
+  // duplicates before they're visited.
+  const queued = new Set<string>();
   const origin = new URL(baseUrl).origin;
-  let frontier: string[] = [new URL(baseUrl).toString()];
+  const start = new URL(baseUrl).toString();
+  let frontier: string[] = [start];
+  queued.add(start);
 
   for (let depth = 0; depth <= maxDepth && frontier.length > 0; depth++) {
     const next: string[] = [];
@@ -209,6 +226,9 @@ async function discoverViaCrawl(
       if (visited.has(url)) continue;
       visited.add(url);
 
+      // Politeness: space out requests (skip the delay before the very first).
+      if (results.length > 0 && delayMs > 0) await sleep(delayMs);
+
       // Same-origin bound (also guards against cross-origin redirects).
       const html = await fetchText(url, origin);
       if (!html) continue;
@@ -216,7 +236,10 @@ async function discoverViaCrawl(
 
       if (depth < maxDepth) {
         for (const link of extractLinks(html, url)) {
-          if (!visited.has(link)) next.push(link);
+          if (!visited.has(link) && !queued.has(link)) {
+            queued.add(link);
+            next.push(link);
+          }
         }
       }
     }
@@ -263,6 +286,8 @@ export async function fetchWebsiteSource(source: SourceConfig): Promise<FetchedS
     for (const url of sitemapUrls) {
       if (pages.length >= maxPages) break;
       if (!isSameOrigin(url, origin)) continue;
+      // Politeness: space out sitemap page downloads too.
+      if (pages.length > 0 && DEFAULT_CRAWL_DELAY_MS > 0) await sleep(DEFAULT_CRAWL_DELAY_MS);
       const html = await fetchText(url, origin);
       if (html) pages.push({ url, html });
     }
@@ -277,13 +302,20 @@ export async function fetchWebsiteSource(source: SourceConfig): Promise<FetchedS
     throw new Error(`Website source '${source.name}': no pages found at ${baseUrl}`);
   }
 
-  // Stage each page as an .html file mirroring its URL path.
+  // Stage each page as an .html file mirroring its URL path, and record the
+  // real file -> URL mapping in a sidecar. The HTML chunker reads this map to
+  // recover the exact source URL (with query string, no synthesized ".html")
+  // instead of reconstructing it from the filename — which 404s.
+  const urlMap: Record<string, string> = {};
   for (const { url, html } of pages) {
     const filename = urlToFilename(url);
     const filePath = path.join(localPath, filename);
     mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(filePath, html);
+    // Key by the POSIX-style relative path, matching how the chunker walks files.
+    urlMap[filename.split(path.sep).join('/')] = url;
   }
+  writeFileSync(path.join(localPath, URL_MAP_FILENAME), JSON.stringify(urlMap, null, 2));
 
   console.log(`   🌐 Downloaded ${pages.length} page(s) from ${baseUrl}`);
 

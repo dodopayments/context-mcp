@@ -1,11 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   parseSitemapUrls,
   isSameOrigin,
   extractLinks,
   urlToFilename,
   isFetchAllowed,
+  URL_MAP_FILENAME,
+  fetchWebsiteSource,
 } from './website.js';
+import type { SourceConfig } from '../config/schema.js';
 
 describe('parseSitemapUrls', () => {
   it('extracts <loc> URLs from a urlset sitemap', () => {
@@ -127,5 +132,75 @@ describe('isFetchAllowed (SSRF guard)', () => {
 
   it('allows anything when no origin restriction is given', () => {
     expect(isFetchAllowed('http://169.254.169.254/', undefined)).toBe(true);
+  });
+});
+
+describe('fetchWebsiteSource URL map sidecar', () => {
+  const realFetch = globalThis.fetch;
+  let staged: string | undefined;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    vi.restoreAllMocks();
+    if (staged && fs.existsSync(staged)) fs.rmSync(staged, { recursive: true, force: true });
+    staged = undefined;
+  });
+
+  function htmlResponse(body: string): Response {
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/html' } });
+  }
+  function xmlResponse(body: string): Response {
+    return new Response(body, { status: 200, headers: { 'content-type': 'application/xml' } });
+  }
+
+  it('writes a sidecar mapping staged files to their exact source URLs', async () => {
+    const origin = 'https://docs.example.com';
+    const page = (h: string) =>
+      `<html><head><title>${h}</title></head><body><main><h2>${h}</h2>` +
+      `<p>This is a sufficiently long paragraph of documentation text for ${h} so ` +
+      `that the chunker and staging pipeline have real content to work with.</p>` +
+      `</main></body></html>`;
+
+    const sitemap = `<?xml version="1.0"?><urlset>
+      <url><loc>${origin}/docs/intro?v=2</loc></url>
+      <url><loc>${origin}/guide/</loc></url>
+    </urlset>`;
+
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.endsWith('/sitemap.xml')) return xmlResponse(sitemap);
+      if (url.includes('/docs/intro')) return htmlResponse(page('Intro'));
+      if (url.includes('/guide')) return htmlResponse(page('Guide'));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const source = {
+      name: 'site',
+      type: 'website',
+      parser: 'html',
+      url: `${origin}/`,
+      maxPages: 10,
+      crawlDepth: 1,
+    } as SourceConfig;
+
+    const result = await fetchWebsiteSource(source);
+    staged = result.localPath;
+
+    const mapPath = path.join(result.localPath, URL_MAP_FILENAME);
+    expect(fs.existsSync(mapPath)).toBe(true);
+
+    const map = JSON.parse(fs.readFileSync(mapPath, 'utf-8')) as Record<string, string>;
+    // The exact URLs (with query string) are preserved in the map values.
+    const urls = Object.values(map);
+    expect(urls).toContain(`${origin}/docs/intro?v=2`);
+    expect(urls).toContain(`${origin}/guide/`);
+
+    // Keys are the staged relative .html files; each maps back to a real URL.
+    for (const [file, url] of Object.entries(map)) {
+      expect(file.endsWith('.html')).toBe(true);
+      expect(url.startsWith(origin)).toBe(true);
+    }
+
+    result.cleanup();
   });
 });
