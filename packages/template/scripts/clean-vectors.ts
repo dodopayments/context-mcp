@@ -16,10 +16,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { clearPineconeIndex, initPineconeIndex, getPineconeStats } from '../src/embeddings/core.js';
 import { loadConfig } from '../src/config/loader.js';
-import {
-  parseCleanArgs,
-  resolveDeletion,
-} from '../src/config/clean-vectors-cli.js';
+import { parseCleanArgs, resolveDeletion } from '../src/config/clean-vectors-cli.js';
 
 function parseArgs() {
   return parseCleanArgs(process.argv.slice(2));
@@ -55,12 +52,11 @@ Examples:
  */
 async function confirmDeletion(indexName: string, vectorCount: number): Promise<boolean> {
   if (!input.isTTY) {
-    const decision = resolveDeletion({ force: false, isTTY: false, indexName });
-    console.error(
-      '\n❌ Refusing to delete: stdin is not interactive and --force was not passed.'
-    );
+    console.error('\n❌ Refusing to delete: stdin is not interactive and --force was not passed.');
     console.error('   Re-run with --force to delete in a non-interactive environment.');
-    return decision.proceed;
+    // Non-interactive without --force always refuses; no need to call
+    // resolveDeletion here (that path is covered by its own unit tests).
+    return false;
   }
 
   console.log('\n⚠️  This will permanently delete ALL vectors from the index.');
@@ -70,9 +66,7 @@ async function confirmDeletion(indexName: string, vectorCount: number): Promise<
 
   const rl = createInterface({ input, output });
   try {
-    const answer = await rl.question(
-      `Type the index name "${indexName}" to confirm deletion: `
-    );
+    const answer = await rl.question(`Type the index name "${indexName}" to confirm deletion: `);
     return resolveDeletion({ force: false, isTTY: true, indexName, answer }).proceed;
   } finally {
     rl.close();
@@ -85,6 +79,13 @@ async function main() {
   if (args.help) {
     printHelp();
     return;
+  }
+
+  // Warn (don't fail) on unrecognized flags so typos like `--forse` don't
+  // silently leave the destructive run unconfirmed.
+  if (args.unknown.length > 0) {
+    console.warn(`⚠️  Ignoring unknown argument(s): ${args.unknown.join(', ')}`);
+    console.warn('   Run with --help to see valid options.\n');
   }
 
   console.log('🗑️  Pinecone Vector Cleanup\n');
@@ -156,7 +157,7 @@ async function main() {
   console.log('═'.repeat(50) + '\n');
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error('❌ Fatal error:', error);
   process.exit(1);
 });

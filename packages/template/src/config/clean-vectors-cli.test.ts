@@ -3,7 +3,7 @@ import { parseCleanArgs, resolveDeletion } from './clean-vectors-cli.js';
 
 describe('parseCleanArgs', () => {
   it('defaults to no flags', () => {
-    expect(parseCleanArgs([])).toEqual({ force: false, help: false });
+    expect(parseCleanArgs([])).toEqual({ force: false, help: false, unknown: [] });
   });
 
   it('parses --force and -f', () => {
@@ -19,6 +19,25 @@ describe('parseCleanArgs', () => {
   it('parses --config <path>', () => {
     expect(parseCleanArgs(['--config', 'ci.yaml']).config).toBe('ci.yaml');
     expect(parseCleanArgs(['-c', 'ci.yaml']).config).toBe('ci.yaml');
+  });
+
+  it('collects unknown flags instead of silently ignoring them', () => {
+    const args = parseCleanArgs(['--forse', 'extra']);
+    expect(args.force).toBe(false);
+    expect(args.unknown).toEqual(['--forse', 'extra']);
+  });
+
+  it('flags a dangling --config with no value', () => {
+    const args = parseCleanArgs(['--config']);
+    expect(args.config).toBeUndefined();
+    expect(args.unknown).toEqual(['--config (missing value)']);
+  });
+
+  it('treats --config followed by another flag as a missing value', () => {
+    const args = parseCleanArgs(['--config', '--force']);
+    expect(args.config).toBeUndefined();
+    expect(args.force).toBe(true);
+    expect(args.unknown).toContain('--config (missing value)');
   });
 });
 
@@ -43,7 +62,12 @@ describe('resolveDeletion', () => {
   });
 
   it('trims whitespace around the answer', () => {
-    const d = resolveDeletion({ force: false, isTTY: true, indexName: 'docs', answer: '  docs \n' });
+    const d = resolveDeletion({
+      force: false,
+      isTTY: true,
+      indexName: 'docs',
+      answer: '  docs \n',
+    });
     expect(d.proceed).toBe(true);
   });
 
