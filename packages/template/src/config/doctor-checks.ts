@@ -102,11 +102,21 @@ export function checkConfig(raw: unknown, env: NodeJS.ProcessEnv): CheckResult[]
     results.push({ status: 'warn', label: 'Embedding config', detail: w });
   }
 
-  // Provider API key env var.
+  // Provider API key env var. Keyless providers (e.g. ollama) have a null
+  // apiKeyEnvVar — emitting checkEnvVar(null) would produce a bogus "Env: null
+  // not set" failure, so report that no key is required instead.
   const provider = parsed.data.embeddings.provider as EmbeddingProvider;
   const providerSpec = EMBEDDING_PROVIDERS[provider];
   if (providerSpec) {
-    results.push(checkEnvVar(providerSpec.apiKeyEnvVar, env));
+    if (providerSpec.apiKeyEnvVar) {
+      results.push(checkEnvVar(providerSpec.apiKeyEnvVar, env));
+    } else {
+      results.push({
+        status: 'pass',
+        label: `Provider key (${provider})`,
+        detail: 'no API key required',
+      });
+    }
   }
 
   return results;
