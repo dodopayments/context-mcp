@@ -42,18 +42,48 @@ export function createMcpServer(pinecone: Pinecone, config: ServerConfig): McpSe
     },
     async ({ query, limit }) => {
       const results = await searchDocs(pinecone, config, query, limit);
-      return { content: [{ type: 'text', text: formatResults(results, query, config.serverName) }] };
+      return {
+        content: [{ type: 'text', text: formatResults(results, query, config.serverName) }],
+      };
     }
   );
 
   return server;
 }
 
+/** Maximum accepted request body size (1 MiB) — guards against unbounded reads. */
+const MAX_BODY_BYTES = 1024 * 1024;
+
+/** A client error that should map to a 4xx response rather than a 500. */
+class BadRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status = 400
+  ) {
+    super(message);
+    this.name = 'BadRequestError';
+  }
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    size += buf.length;
+    if (size > MAX_BODY_BYTES) {
+      throw new BadRequestError('Request body too large', 413);
+    }
+    chunks.push(buf);
+  }
   const raw = Buffer.concat(chunks).toString('utf-8');
-  return raw ? JSON.parse(raw) : undefined;
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Malformed JSON is a client error (400), not a server fault (500).
+    throw new BadRequestError('Invalid JSON in request body');
+  }
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -67,6 +97,12 @@ export function startServer(config: ServerConfig = loadServerConfig()) {
 
   const httpServer = createServer((req, res) => {
     void handleRequest(req, res, pinecone, config).catch(error => {
+      // Client errors (bad/oversized JSON) map to their 4xx status; everything
+      // else is an unexpected server fault.
+      if (error instanceof BadRequestError) {
+        if (!res.headersSent) sendJson(res, error.status, { error: error.message });
+        return;
+      }
       console.error('[Server] Unhandled error:', error);
       if (!res.headersSent) sendJson(res, 500, { error: 'Internal server error' });
     });

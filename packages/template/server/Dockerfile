@@ -6,8 +6,9 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 # Install dependencies (including dev deps needed to compile TypeScript).
-COPY package.json ./
-RUN npm install
+# Copy the lockfile and use `npm ci` for reproducible, lockfile-pinned installs.
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Compile TypeScript to dist/.
 COPY tsconfig.json ./
@@ -19,9 +20,9 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install only production dependencies.
-COPY package.json ./
-RUN npm install --omit=dev
+# Install only production dependencies (reproducible via the lockfile).
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # Copy compiled output.
 COPY --from=build /app/dist ./dist
