@@ -11,11 +11,7 @@
  */
 
 import 'dotenv/config';
-import {
-  CONFIG_PATHS,
-  findConfigFile,
-  validateConfigFile,
-} from '../src/config/validate-config.js';
+import { CONFIG_PATHS, findConfigFile, validateConfigFile } from '../src/config/validate-config.js';
 import { parseValidateArgs, printValidateHelp } from '../src/config/validate-cli.js';
 
 function main(): void {
@@ -23,6 +19,11 @@ function main(): void {
   if (args.help) {
     printValidateHelp();
     return;
+  }
+  if (args.error) {
+    console.error(`\n❌ ${args.error}`);
+    printValidateHelp();
+    process.exit(1);
   }
 
   console.log('🔍 Validating ContextMCP configuration\n');

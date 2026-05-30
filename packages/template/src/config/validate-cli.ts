@@ -7,6 +7,8 @@ export interface ValidateArgs {
   config?: string;
   checkEnv: boolean;
   help: boolean;
+  /** Set when argv is malformed (e.g. --config with no value). */
+  error?: string;
 }
 
 /** Parse argv (without the leading `node script` entries) into ValidateArgs. */
@@ -19,7 +21,16 @@ export function parseValidateArgs(argv: string[]): ValidateArgs {
     } else if (arg === '--check-env') {
       args.checkEnv = true;
     } else if (arg === '--config' || arg === '-c') {
-      args.config = argv[++i];
+      const value = argv[i + 1];
+      // Guard against `--config` being the final arg (or immediately followed
+      // by another flag), which would otherwise silently fall back to config
+      // discovery as if no path were requested.
+      if (value === undefined || value.startsWith('-')) {
+        args.error = `${arg} requires a file path`;
+        return args;
+      }
+      args.config = value;
+      i++;
     }
   }
   return args;
