@@ -56,7 +56,8 @@ export async function generateEmbeddingsOpenAI(
   model: string
 ): Promise<number[][]> {
   return withRetry(() =>
-    openai.embeddings.create({ model, input: texts })
+    openai.embeddings
+      .create({ model, input: texts })
       .then(response => response.data.map(e => e.embedding))
   );
 }
@@ -72,14 +73,16 @@ export async function generateEmbeddingsGemini(
   dimensions: number
 ): Promise<number[][]> {
   return withRetry(() =>
-    gemini.models.embedContent({
-      model,
-      contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
-      config: {
-        taskType: 'RETRIEVAL_DOCUMENT' as const,
-        outputDimensionality: dimensions,
-      },
-    }).then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+    gemini.models
+      .embedContent({
+        model,
+        contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+        config: {
+          taskType: 'RETRIEVAL_DOCUMENT' as const,
+          outputDimensionality: dimensions,
+        },
+      })
+      .then(response => (response.embeddings ?? []).map(e => e.values ?? []))
   );
 }
 
@@ -92,7 +95,8 @@ export async function generateEmbeddingsGemini(
 export async function generateEmbeddingsCohere(
   apiKey: string,
   model: string,
-  texts: string[]
+  texts: string[],
+  dimensions?: number
 ): Promise<number[][]> {
   return withRetry(
     async () => {
@@ -107,6 +111,9 @@ export async function generateEmbeddingsCohere(
           texts,
           input_type: 'search_document',
           embedding_types: ['float'],
+          // Without this, embed-v4.0 returns its 1536-dim default, which won't
+          // match a Pinecone index created at the configured dimension.
+          ...(dimensions ? { output_dimension: dimensions } : {}),
         }),
       });
       if (!res.ok) {
@@ -133,7 +140,8 @@ export async function generateEmbeddingsCohere(
 export async function generateEmbeddingsVoyage(
   apiKey: string,
   model: string,
-  texts: string[]
+  texts: string[],
+  dimensions?: number
 ): Promise<number[][]> {
   return withRetry(
     async () => {
@@ -143,7 +151,14 @@ export async function generateEmbeddingsVoyage(
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model, input: texts, input_type: 'document' }),
+        body: JSON.stringify({
+          model,
+          input: texts,
+          input_type: 'document',
+          // voyage-3-large / voyage-code-3 support Matryoshka output_dimension;
+          // pin it so vectors match the configured Pinecone index dimension.
+          ...(dimensions ? { output_dimension: dimensions } : {}),
+        }),
       });
       if (!res.ok) {
         throw Object.assign(new Error(`Voyage embed failed: ${res.status} ${res.statusText}`), {
@@ -158,7 +173,6 @@ export async function generateEmbeddingsVoyage(
     { label: 'Voyage embed' }
   );
 }
-
 
 // =============================================================================
 // PINECONE FUNCTIONS
@@ -181,7 +195,7 @@ export async function initPineconeIndex(
 ): Promise<void> {
   const indexes = await pc.listIndexes();
   const indexExists = indexes.indexes?.some(i => i.name === indexName);
-  
+
   if (!indexExists) {
     console.log(`📦 Creating Pinecone index: ${indexName}`);
     await pc.createIndex({
@@ -195,7 +209,7 @@ export async function initPineconeIndex(
         },
       },
     });
-    
+
     console.log('⏳ Waiting for index to be ready...');
     let ready = false;
     while (!ready) {
@@ -224,32 +238,32 @@ export async function clearPineconeIndex(
 ): Promise<{ success: boolean; vectorCount?: number }> {
   try {
     const index = pc.index(indexName);
-    
+
     // Get current stats before clearing
     const stats = await index.describeIndexStats();
     const vectorCount = stats.totalRecordCount || 0;
-    
+
     if (vectorCount === 0) {
       console.log('   Index is already empty');
       return { success: true, vectorCount: 0 };
     }
-    
+
     console.log(`   Found ${vectorCount.toLocaleString()} vectors to delete...`);
-    
+
     // Delete all vectors in the default namespace
     await index.namespace('').deleteAll();
-    
+
     // Wait a moment for deletion to propagate
     await sleep(2000);
-    
+
     // Verify deletion
     const newStats = await index.describeIndexStats();
     const remaining = newStats.totalRecordCount || 0;
-    
+
     if (remaining > 0) {
       console.log(`   ⚠️ ${remaining} vectors still remaining (may take time to propagate)`);
     }
-    
+
     return { success: true, vectorCount };
   } catch (error) {
     console.error('   Error clearing index:', error);
@@ -281,7 +295,10 @@ export async function getPineconeStats(
 /**
  * Truncate content for metadata storage (Pinecone has limits)
  */
-export function truncateContent(content: string, maxLength: number = PINECONE_METADATA_MAX_LENGTH): string {
+export function truncateContent(
+  content: string,
+  maxLength: number = PINECONE_METADATA_MAX_LENGTH
+): string {
   if (content.length <= maxLength) return content;
   return content.substring(0, maxLength) + '...';
 }
@@ -314,33 +331,33 @@ export function chunkToRecord(chunk: DocChunk, embedding: number[]): EmbeddingRe
  */
 export function prepareChunkForEmbedding(chunk: DocChunk): string {
   const parts: string[] = [];
-  
+
   // Add repository context
   if (chunk.metadata.repository) {
     parts.push(`SDK: ${chunk.metadata.repository}`);
   }
-  
+
   // Add language
   if (chunk.metadata.language) {
     parts.push(`Language: ${chunk.metadata.language}`);
   }
-  
+
   // Add title/heading
   parts.push(chunk.documentTitle);
   if (chunk.heading && chunk.heading !== chunk.documentTitle) {
     parts.push(chunk.heading);
   }
-  
+
   // Add API method context
   if (chunk.metadata.method && chunk.metadata.path) {
     parts.push(`${chunk.metadata.method.toUpperCase()} ${chunk.metadata.path}`);
   }
-  
+
   // Add description
   if (chunk.metadata.description) {
     parts.push(chunk.metadata.description);
   }
-  
+
   // Add the main content
   parts.push(chunk.content);
   const embeddingInput = parts.join('\n\n');
