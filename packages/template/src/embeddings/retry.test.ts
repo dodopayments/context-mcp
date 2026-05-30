@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRetryableError, withRetry } from './core.js';
+import { isRetryableError, withRetry, retryAfterMs } from './core.js';
 
 describe('isRetryableError', () => {
   it('retries on rate limit (429) and request timeout (408)', () => {
@@ -23,7 +23,21 @@ describe('isRetryableError', () => {
   it('retries on transient network error codes', () => {
     expect(isRetryableError({ code: 'ECONNRESET' })).toBe(true);
     expect(isRetryableError({ code: 'ETIMEDOUT' })).toBe(true);
-    expect(isRetryableError({ code: 'ENOTFOUND' })).toBe(true);
+    expect(isRetryableError({ code: 'EAI_AGAIN' })).toBe(true);
+  });
+
+  it('does NOT retry a hard NXDOMAIN (ENOTFOUND) — it is permanent', () => {
+    expect(isRetryableError({ code: 'ENOTFOUND' })).toBe(false);
+  });
+
+  it('retries a timeout/abort recognised by error name', () => {
+    const aborted = new Error('aborted');
+    aborted.name = 'AbortError';
+    expect(isRetryableError(aborted)).toBe(true);
+
+    const timedOut = new Error('timed out');
+    timedOut.name = 'TimeoutError';
+    expect(isRetryableError(timedOut)).toBe(true);
   });
 
   it('reads the network code from a nested cause (fetch errors)', () => {
@@ -116,5 +130,34 @@ describe('withRetry', () => {
       )
     ).rejects.toThrow('custom');
     expect(calls).toBe(1);
+  });
+});
+
+describe('retryAfterMs', () => {
+  it('parses delta-seconds into milliseconds', () => {
+    expect(retryAfterMs({ headers: { 'retry-after': '2' } })).toBe(2000);
+    expect(retryAfterMs({ headers: { 'retry-after': '0' } })).toBe(0);
+  });
+
+  it('reads from a Headers instance', () => {
+    const headers = new Headers({ 'retry-after': '3' });
+    expect(retryAfterMs({ headers })).toBe(3000);
+  });
+
+  it('parses an HTTP-date into a forward-looking delay', () => {
+    const future = new Date(Date.now() + 5000).toUTCString();
+    const ms = retryAfterMs({ headers: { 'retry-after': future } });
+    expect(ms).toBeGreaterThan(0);
+    expect(ms).toBeLessThanOrEqual(5000);
+  });
+
+  it('returns undefined for whitespace-only or junk values (not a bogus 0)', () => {
+    expect(retryAfterMs({ headers: { 'retry-after': '   ' } })).toBeUndefined();
+    expect(retryAfterMs({ headers: { 'retry-after': 'soon' } })).toBeUndefined();
+  });
+
+  it('returns undefined when no header is present', () => {
+    expect(retryAfterMs({})).toBeUndefined();
+    expect(retryAfterMs(new Error('x'))).toBeUndefined();
   });
 });

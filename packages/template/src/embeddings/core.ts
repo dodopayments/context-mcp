@@ -56,7 +56,8 @@ export async function generateEmbeddingsOpenAI(
   model: string
 ): Promise<number[][]> {
   return withRetry(() =>
-    openai.embeddings.create({ model, input: texts })
+    openai.embeddings
+      .create({ model, input: texts })
       .then(response => response.data.map(e => e.embedding))
   );
 }
@@ -72,17 +73,18 @@ export async function generateEmbeddingsGemini(
   dimensions: number
 ): Promise<number[][]> {
   return withRetry(() =>
-    gemini.models.embedContent({
-      model,
-      contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
-      config: {
-        taskType: 'RETRIEVAL_DOCUMENT' as const,
-        outputDimensionality: dimensions,
-      },
-    }).then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+    gemini.models
+      .embedContent({
+        model,
+        contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+        config: {
+          taskType: 'RETRIEVAL_DOCUMENT' as const,
+          outputDimensionality: dimensions,
+        },
+      })
+      .then(response => (response.embeddings ?? []).map(e => e.values ?? []))
   );
 }
-
 
 // =============================================================================
 // PINECONE FUNCTIONS
@@ -105,7 +107,7 @@ export async function initPineconeIndex(
 ): Promise<void> {
   const indexes = await pc.listIndexes();
   const indexExists = indexes.indexes?.some(i => i.name === indexName);
-  
+
   if (!indexExists) {
     console.log(`📦 Creating Pinecone index: ${indexName}`);
     await pc.createIndex({
@@ -119,7 +121,7 @@ export async function initPineconeIndex(
         },
       },
     });
-    
+
     console.log('⏳ Waiting for index to be ready...');
     let ready = false;
     while (!ready) {
@@ -148,32 +150,32 @@ export async function clearPineconeIndex(
 ): Promise<{ success: boolean; vectorCount?: number }> {
   try {
     const index = pc.index(indexName);
-    
+
     // Get current stats before clearing
     const stats = await index.describeIndexStats();
     const vectorCount = stats.totalRecordCount || 0;
-    
+
     if (vectorCount === 0) {
       console.log('   Index is already empty');
       return { success: true, vectorCount: 0 };
     }
-    
+
     console.log(`   Found ${vectorCount.toLocaleString()} vectors to delete...`);
-    
+
     // Delete all vectors in the default namespace
     await index.namespace('').deleteAll();
-    
+
     // Wait a moment for deletion to propagate
     await sleep(2000);
-    
+
     // Verify deletion
     const newStats = await index.describeIndexStats();
     const remaining = newStats.totalRecordCount || 0;
-    
+
     if (remaining > 0) {
       console.log(`   ⚠️ ${remaining} vectors still remaining (may take time to propagate)`);
     }
-    
+
     return { success: true, vectorCount };
   } catch (error) {
     console.error('   Error clearing index:', error);
@@ -205,7 +207,10 @@ export async function getPineconeStats(
 /**
  * Truncate content for metadata storage (Pinecone has limits)
  */
-export function truncateContent(content: string, maxLength: number = PINECONE_METADATA_MAX_LENGTH): string {
+export function truncateContent(
+  content: string,
+  maxLength: number = PINECONE_METADATA_MAX_LENGTH
+): string {
   if (content.length <= maxLength) return content;
   return content.substring(0, maxLength) + '...';
 }
@@ -238,33 +243,33 @@ export function chunkToRecord(chunk: DocChunk, embedding: number[]): EmbeddingRe
  */
 export function prepareChunkForEmbedding(chunk: DocChunk): string {
   const parts: string[] = [];
-  
+
   // Add repository context
   if (chunk.metadata.repository) {
     parts.push(`SDK: ${chunk.metadata.repository}`);
   }
-  
+
   // Add language
   if (chunk.metadata.language) {
     parts.push(`Language: ${chunk.metadata.language}`);
   }
-  
+
   // Add title/heading
   parts.push(chunk.documentTitle);
   if (chunk.heading && chunk.heading !== chunk.documentTitle) {
     parts.push(chunk.heading);
   }
-  
+
   // Add API method context
   if (chunk.metadata.method && chunk.metadata.path) {
     parts.push(`${chunk.metadata.method.toUpperCase()} ${chunk.metadata.path}`);
   }
-  
+
   // Add description
   if (chunk.metadata.description) {
     parts.push(chunk.metadata.description);
   }
-  
+
   // Add the main content
   parts.push(chunk.content);
   const embeddingInput = parts.join('\n\n');
@@ -287,11 +292,13 @@ export function sleep(ms: number): Promise<void> {
 }
 
 // Network error codes that are safe to retry (transient connectivity issues).
+// Note: ENOTFOUND (hard NXDOMAIN) is intentionally excluded — it's almost
+// always a permanent misconfiguration, so retrying only adds latency. The
+// transient DNS failure worth retrying is EAI_AGAIN.
 const RETRYABLE_NETWORK_CODES = new Set([
   'ECONNRESET',
   'ECONNREFUSED',
   'ETIMEDOUT',
-  'ENOTFOUND',
   'EAI_AGAIN',
   'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT',
@@ -328,6 +335,13 @@ export function isRetryableError(err: unknown): boolean {
   const code = getErrorCode(err);
   if (code && RETRYABLE_NETWORK_CODES.has(code)) return true;
 
+  // Defense-in-depth: a bare timeout/abort can reach here as an AbortError
+  // (DOMException, numeric code 20) if it wasn't translated to a TimeoutError.
+  // Treat it as a transient timeout rather than a permanent failure.
+  if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+    return true;
+  }
+
   return false;
 }
 
@@ -335,19 +349,21 @@ export function isRetryableError(err: unknown): boolean {
  * Honour a Retry-After header (seconds or HTTP-date) if present on the error.
  * Returns a delay in ms, or undefined if not present/parseable.
  */
-function retryAfterMs(err: unknown): number | undefined {
+export function retryAfterMs(err: unknown): number | undefined {
   const headers = (err as { headers?: Record<string, string> | Headers })?.headers;
   if (!headers) return undefined;
   const raw =
     typeof (headers as Headers).get === 'function'
       ? (headers as Headers).get('retry-after')
       : (headers as Record<string, string>)['retry-after'];
-  if (!raw) return undefined;
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
 
-  const asNumber = Number(raw);
-  if (!Number.isNaN(asNumber)) return asNumber * 1000;
+  // Numeric form: delta-seconds. Use a strict check so whitespace/empty
+  // strings (which `Number()` coerces to 0) don't yield a bogus 0ms delay.
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
 
-  const asDate = Date.parse(raw);
+  const asDate = Date.parse(trimmed);
   if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
 
   return undefined;

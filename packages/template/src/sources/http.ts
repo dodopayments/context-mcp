@@ -35,6 +35,24 @@ export class HttpError extends Error {
 }
 
 /**
+ * Error thrown when a request exceeds its per-attempt timeout.
+ *
+ * A raw aborted fetch surfaces as a DOMException `AbortError` whose `.code` is
+ * the numeric `20`, which the string-based network-code matcher in
+ * `isRetryableError` can't recognise — so the attempt would never be retried.
+ * We translate the timeout into this error with `code = 'ETIMEDOUT'` so the
+ * shared retry policy treats it as the transient failure it is.
+ */
+export class TimeoutError extends Error {
+  code = 'ETIMEDOUT';
+
+  constructor(url: string, timeoutMs: number) {
+    super(`Request to ${url} timed out after ${timeoutMs}ms`);
+    this.name = 'TimeoutError';
+  }
+}
+
+/**
  * Fetch a URL with a per-attempt timeout and automatic retries on transient
  * failures (429/408/5xx/network errors). Throws HttpError on a final non-OK
  * response, or the underlying error on a final network/timeout failure.
@@ -48,7 +66,11 @@ export async function fetchWithRetry(
   return withRetry(
     async () => {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
       try {
         const response = await fetch(url, { ...init, signal: controller.signal });
         if (!response.ok) {
@@ -56,6 +78,15 @@ export async function fetchWithRetry(
           throw new HttpError(response.status, response.statusText, url, response.headers);
         }
         return response;
+      } catch (err) {
+        // A timeout-driven abort surfaces as an AbortError (numeric code 20),
+        // which isn't recognised as retryable. Translate it so the retry
+        // policy treats the timeout as the transient failure it is. Aborts we
+        // didn't trigger (e.g. caller-supplied signal) are left untouched.
+        if (timedOut && err instanceof Error && err.name === 'AbortError') {
+          throw new TimeoutError(url, timeoutMs);
+        }
+        throw err;
       } finally {
         clearTimeout(timer);
       }
