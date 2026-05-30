@@ -11,11 +11,13 @@ export interface TxtArgs {
   output?: string;
   force: boolean;
   help: boolean;
+  /** Unrecognized tokens / flags, surfaced so the script can warn on typos. */
+  unknown: string[];
 }
 
 /** Parse argv (without the leading `node script` entries). */
 export function parseTxtArgs(argv: string[]): TxtArgs {
-  const args: TxtArgs = { force: false, help: false };
+  const args: TxtArgs = { force: false, help: false, unknown: [] };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') {
@@ -23,9 +25,23 @@ export function parseTxtArgs(argv: string[]): TxtArgs {
     } else if (arg === '--force' || arg === '-f') {
       args.force = true;
     } else if (arg === '--input' || arg === '-i') {
-      args.input = argv[++i];
+      const value = argv[++i];
+      if (value === undefined || value.startsWith('-')) {
+        args.unknown.push(`${arg} (missing value)`);
+        if (value !== undefined) i--;
+      } else {
+        args.input = value;
+      }
     } else if (arg === '--output' || arg === '-o') {
-      args.output = argv[++i];
+      const value = argv[++i];
+      if (value === undefined || value.startsWith('-')) {
+        args.unknown.push(`${arg} (missing value)`);
+        if (value !== undefined) i--;
+      } else {
+        args.output = value;
+      }
+    } else {
+      args.unknown.push(arg);
     }
   }
   return args;

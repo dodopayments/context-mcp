@@ -10,7 +10,7 @@ import {
 
 describe('parseTxtArgs', () => {
   it('defaults to no flags', () => {
-    expect(parseTxtArgs([])).toEqual({ force: false, help: false });
+    expect(parseTxtArgs([])).toEqual({ force: false, help: false, unknown: [] });
   });
 
   it('parses --input/-i and --output/-o', () => {
@@ -28,6 +28,24 @@ describe('parseTxtArgs', () => {
     expect(parseTxtArgs(['--force']).force).toBe(true);
     expect(parseTxtArgs(['-h']).help).toBe(true);
   });
+
+  it('collects unknown flags instead of silently ignoring them', () => {
+    const args = parseTxtArgs(['--inputt', 'x.json', 'stray']);
+    expect(args.input).toBeUndefined();
+    expect(args.unknown).toEqual(['--inputt', 'x.json', 'stray']);
+  });
+
+  it('flags a dangling -i / -o with no value', () => {
+    expect(parseTxtArgs(['-i']).unknown).toEqual(['-i (missing value)']);
+    expect(parseTxtArgs(['--output']).unknown).toEqual(['--output (missing value)']);
+  });
+
+  it('treats -i followed by another flag as a missing value', () => {
+    const args = parseTxtArgs(['-i', '--force']);
+    expect(args.input).toBeUndefined();
+    expect(args.force).toBe(true);
+    expect(args.unknown).toContain('-i (missing value)');
+  });
 });
 
 describe('resolvePaths', () => {
@@ -40,7 +58,10 @@ describe('resolvePaths', () => {
   });
 
   it('resolves explicit input/output against CWD', () => {
-    const { inputPath, outputPath } = resolvePaths({ input: 'in.json', output: 'out.txt' }, dataDir);
+    const { inputPath, outputPath } = resolvePaths(
+      { input: 'in.json', output: 'out.txt' },
+      dataDir
+    );
     expect(inputPath).toBe(path.resolve('in.json'));
     expect(outputPath).toBe(path.resolve('out.txt'));
   });

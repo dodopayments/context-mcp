@@ -75,6 +75,12 @@ async function main() {
     return;
   }
 
+  // Warn (don't fail) on unrecognized flags so typos don't go unnoticed.
+  if (args.unknown.length > 0) {
+    console.warn(`⚠️  Ignoring unknown argument(s): ${args.unknown.join(', ')}`);
+    console.warn('   Run with --help to see valid options.\n');
+  }
+
   const dataDir = path.resolve(__dirname, '../data');
   const { inputPath, outputPath } = resolvePaths(args, dataDir);
 
@@ -93,24 +99,24 @@ async function main() {
   }
 
   const indexData: DocsIndex = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
-  
+
   console.log(`📊 Found ${indexData.chunks.length} chunks`);
-  
+
   // Format all chunks to text (matches Cloudflare worker format)
   const textContent = formatChunks(indexData.chunks);
-  
+
   // Write to file (ensure the target directory exists)
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, textContent, 'utf-8');
-  
+
   const fileSizeMB = (Buffer.byteLength(textContent, 'utf8') / 1024 / 1024).toFixed(2);
-  
+
   console.log(`✅ Saved to: ${outputPath}`);
   console.log(`📁 File size: ${fileSizeMB} MB`);
   console.log(`📝 Total lines: ${textContent.split('\n').length}`);
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error('❌ Fatal error:', error);
   process.exit(1);
 });
