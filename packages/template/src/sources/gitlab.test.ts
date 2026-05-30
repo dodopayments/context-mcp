@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { buildCloneUrl, validateGitLabInput } from './gitlab.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { buildCloneUrl, validateGitLabInput, scrubRemote } from './gitlab.js';
 
 describe('buildCloneUrl', () => {
   it('builds a plain HTTPS URL when no token is provided', () => {
@@ -71,5 +75,52 @@ describe('validateGitLabInput', () => {
     expect(() => validateGitLabInput('gitlab.com;curl evil', 'g/p', 'main')).toThrow(
       /Invalid GitLab host/
     );
+  });
+});
+
+describe('scrubRemote', () => {
+  const tmpDirs: string[] = [];
+
+  afterEach(() => {
+    for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  function makeRepo(originUrl: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlab-scrub-'));
+    tmpDirs.push(dir);
+    execFileSync('git', ['-C', dir, 'init', '-q'], { stdio: 'pipe' });
+    execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', originUrl], { stdio: 'pipe' });
+    return dir;
+  }
+
+  function originUrl(dir: string): string {
+    return execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { stdio: 'pipe' })
+      .toString()
+      .trim();
+  }
+
+  it('rewrites a token-bearing origin to the tokenless URL', () => {
+    const dir = makeRepo('https://oauth2:secret-token@gitlab.com/group/project.git');
+    scrubRemote(dir, 'gitlab.com', 'group/project');
+
+    const url = originUrl(dir);
+    expect(url).toBe('https://gitlab.com/group/project.git');
+    expect(url).not.toContain('secret-token');
+    expect(url).not.toContain('@');
+  });
+
+  it('is idempotent on an already-clean remote', () => {
+    const dir = makeRepo('https://gitlab.com/group/project.git');
+    scrubRemote(dir, 'gitlab.com', 'group/project');
+    expect(originUrl(dir)).toBe('https://gitlab.com/group/project.git');
+  });
+
+  it('hard-fails and removes the clone when scrubbing is impossible', () => {
+    // No .git here, so `git remote set-url` cannot succeed.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlab-noscrub-'));
+    tmpDirs.push(dir);
+    expect(() => scrubRemote(dir, 'gitlab.com', 'group/project')).toThrow(/Failed to scrub/);
+    // The clone directory is removed so no token-bearing config can linger.
+    expect(fs.existsSync(dir)).toBe(false);
   });
 });

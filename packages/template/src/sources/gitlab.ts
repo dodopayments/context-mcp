@@ -71,15 +71,43 @@ function git(args: string[]): void {
   execFileSync('git', args, { stdio: 'pipe' });
 }
 
+/** Run git and return trimmed stdout (no shell). */
+function gitOutput(args: string[]): string {
+  return execFileSync('git', args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    .toString()
+    .trim();
+}
+
 /**
  * Remove the token-bearing remote URL from disk by resetting origin to the
  * plain HTTPS URL. The token was only ever used inline for the clone/fetch.
+ *
+ * Security: when a token was used, this MUST succeed — if the scrub (or its
+ * verification) fails we delete the clone and throw, rather than leaving a
+ * plaintext token sitting in `.git/config`. `.temp-repos` is gitignored, but a
+ * leaked token on disk is not acceptable as a best-effort.
  */
-function scrubRemote(localPath: string, host: string, repository: string): void {
+export function scrubRemote(localPath: string, host: string, repository: string): void {
+  const safeUrl = tokenlessUrl(host, repository);
   try {
-    git(['-C', localPath, 'remote', 'set-url', 'origin', tokenlessUrl(host, repository)]);
-  } catch {
-    // Non-fatal: the temp dir is gitignored. Best-effort scrub only.
+    git(['-C', localPath, 'remote', 'set-url', 'origin', safeUrl]);
+    // Verify the token is actually gone from the persisted remote.
+    const persisted = gitOutput(['-C', localPath, 'remote', 'get-url', 'origin']);
+    if (persisted !== safeUrl || persisted.includes('@')) {
+      throw new Error(`remote still contains credentials after scrub`);
+    }
+  } catch (err) {
+    // Hard-fail: remove the clone so no token-bearing .git/config remains.
+    try {
+      rmSync(localPath, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup failure; the throw below is what matters
+    }
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Failed to scrub GitLab token from ${repository}'s git remote (${reason}). ` +
+        `Clone removed to avoid leaving the token on disk.`
+    );
   }
 }
 
