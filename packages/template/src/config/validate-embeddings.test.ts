@@ -38,13 +38,34 @@ describe('validateEmbeddingConfig', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('accepts the minimum boundary dimension for a range model', () => {
+  it('accepts the minimum boundary dimension for a range model (no error)', () => {
     const result = validateEmbeddingConfig({
       provider: 'openai',
       model: 'text-embedding-3-small',
       dimensions: 1,
     });
     expect(result.errors).toEqual([]);
+  });
+
+  it('warns (not errors) on a suspiciously low in-range dimension', () => {
+    const result = validateEmbeddingConfig({
+      provider: 'openai',
+      model: 'text-embedding-3-small',
+      dimensions: 15,
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('unusually low');
+  });
+
+  it('does not warn on a normal large reduced dimension', () => {
+    const result = validateEmbeddingConfig({
+      provider: 'openai',
+      model: 'text-embedding-3-large',
+      dimensions: 1536,
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
   it('errors on an out-of-range dimension for a range model', () => {

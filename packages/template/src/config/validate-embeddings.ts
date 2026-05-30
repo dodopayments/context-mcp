@@ -100,6 +100,12 @@ export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
   },
 };
 
+/**
+ * In-range dimensions below this are flagged with a soft warning (likely a typo
+ * such as 15 vs 1536). Not an error — some models legitimately use small dims.
+ */
+const LOW_DIMENSION_WARNING_THRESHOLD = 64;
+
 export interface EmbeddingValidationResult {
   /** Hard problems that will cause a failed or corrupt reindex. */
   errors: string[];
@@ -168,6 +174,14 @@ export function validateEmbeddingConfig(
       errors.push(
         `embeddings.dimensions=${dimensions} is out of range for ${provider}/${model}. ` +
           `Supported range: ${c.min}–${c.max} (recommended: ${c.defaultDimension}).`
+      );
+    } else if (c.kind === 'range' && dimensions < LOW_DIMENSION_WARNING_THRESHOLD) {
+      // In-range but suspiciously small — the floor is intentionally permissive
+      // (some models go very low), but a value this tiny is usually a typo like
+      // `15` instead of `1536`. Warn, never error, so legitimate reductions pass.
+      warnings.push(
+        `embeddings.dimensions=${dimensions} is unusually low for ${provider}/${model} ` +
+          `(recommended: ${c.defaultDimension}). Double-check this isn't a typo.`
       );
     }
   }
