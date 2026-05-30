@@ -133,14 +133,24 @@ How it works:
   also seeds it.
 
 To make incremental runs work in CI, persist `data/reindex-manifest.json`
-between runs (commit it, or use an actions cache):
+between runs (commit it, or use an actions cache).
+
+> **Important:** `actions/cache` only _writes_ a new entry on a cache **miss**.
+> With a constant `key`, the manifest is saved once and never updated again, so
+> every incremental run would diff against that first, now-stale manifest
+> forever. Use a **rotating key** (unique per run) plus `restore-keys` so each
+> run restores the latest manifest and saves a fresh one:
 
 ```yaml
 - name: Restore reindex manifest
   uses: actions/cache@v4
   with:
     path: data/reindex-manifest.json
-    key: reindex-manifest
+    # Unique per run -> always a miss -> the updated manifest is always saved.
+    key: reindex-manifest-${{ github.run_id }}
+    # Falls back to the most recent previous manifest on restore.
+    restore-keys: |
+      reindex-manifest-
 
 - name: Reindex (incremental)
   run: npm run reindex -- --incremental
@@ -148,6 +158,9 @@ between runs (commit it, or use an actions cache):
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
 ```
+
+Alternatively, commit `data/reindex-manifest.json` to the repo after each run —
+simpler and fully deterministic, at the cost of a commit per reindex.
 
 > `--incremental` covers all sources, so it can't be combined with `--source`.
 

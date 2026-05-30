@@ -15,7 +15,7 @@ import {
   EMBEDDING_MAX_TOKENS,
   EMBEDDING_ENCODING,
 } from '../config/index.js';
-import { DocChunk } from '../types/index.js';
+import { type DocChunk, toVectorId } from '../types/index.js';
 
 // cl100k_base approximates both OpenAI and Gemini tokenization (~8192 token limit each)
 const encoder = get_encoding(EMBEDDING_ENCODING);
@@ -56,7 +56,8 @@ export async function generateEmbeddingsOpenAI(
   model: string
 ): Promise<number[][]> {
   return withRetry(() =>
-    openai.embeddings.create({ model, input: texts })
+    openai.embeddings
+      .create({ model, input: texts })
       .then(response => response.data.map(e => e.embedding))
   );
 }
@@ -72,17 +73,18 @@ export async function generateEmbeddingsGemini(
   dimensions: number
 ): Promise<number[][]> {
   return withRetry(() =>
-    gemini.models.embedContent({
-      model,
-      contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
-      config: {
-        taskType: 'RETRIEVAL_DOCUMENT' as const,
-        outputDimensionality: dimensions,
-      },
-    }).then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+    gemini.models
+      .embedContent({
+        model,
+        contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+        config: {
+          taskType: 'RETRIEVAL_DOCUMENT' as const,
+          outputDimensionality: dimensions,
+        },
+      })
+      .then(response => (response.embeddings ?? []).map(e => e.values ?? []))
   );
 }
-
 
 // =============================================================================
 // PINECONE FUNCTIONS
@@ -105,7 +107,7 @@ export async function initPineconeIndex(
 ): Promise<void> {
   const indexes = await pc.listIndexes();
   const indexExists = indexes.indexes?.some(i => i.name === indexName);
-  
+
   if (!indexExists) {
     console.log(`📦 Creating Pinecone index: ${indexName}`);
     await pc.createIndex({
@@ -119,7 +121,7 @@ export async function initPineconeIndex(
         },
       },
     });
-    
+
     console.log('⏳ Waiting for index to be ready...');
     let ready = false;
     while (!ready) {
@@ -148,32 +150,32 @@ export async function clearPineconeIndex(
 ): Promise<{ success: boolean; vectorCount?: number }> {
   try {
     const index = pc.index(indexName);
-    
+
     // Get current stats before clearing
     const stats = await index.describeIndexStats();
     const vectorCount = stats.totalRecordCount || 0;
-    
+
     if (vectorCount === 0) {
       console.log('   Index is already empty');
       return { success: true, vectorCount: 0 };
     }
-    
+
     console.log(`   Found ${vectorCount.toLocaleString()} vectors to delete...`);
-    
+
     // Delete all vectors in the default namespace
     await index.namespace('').deleteAll();
-    
+
     // Wait a moment for deletion to propagate
     await sleep(2000);
-    
+
     // Verify deletion
     const newStats = await index.describeIndexStats();
     const remaining = newStats.totalRecordCount || 0;
-    
+
     if (remaining > 0) {
       console.log(`   ⚠️ ${remaining} vectors still remaining (may take time to propagate)`);
     }
-    
+
     return { success: true, vectorCount };
   } catch (error) {
     console.error('   Error clearing index:', error);
@@ -228,7 +230,10 @@ export async function getPineconeStats(
 /**
  * Truncate content for metadata storage (Pinecone has limits)
  */
-export function truncateContent(content: string, maxLength: number = PINECONE_METADATA_MAX_LENGTH): string {
+export function truncateContent(
+  content: string,
+  maxLength: number = PINECONE_METADATA_MAX_LENGTH
+): string {
   if (content.length <= maxLength) return content;
   return content.substring(0, maxLength) + '...';
 }
@@ -238,7 +243,7 @@ export function truncateContent(content: string, maxLength: number = PINECONE_ME
  */
 export function chunkToRecord(chunk: DocChunk, embedding: number[]): EmbeddingRecord {
   return {
-    id: chunk.id.replace(/[^a-zA-Z0-9_-]/g, '_'),
+    id: toVectorId(chunk.id),
     values: embedding,
     metadata: {
       documentPath: chunk.documentPath,
@@ -261,33 +266,33 @@ export function chunkToRecord(chunk: DocChunk, embedding: number[]): EmbeddingRe
  */
 export function prepareChunkForEmbedding(chunk: DocChunk): string {
   const parts: string[] = [];
-  
+
   // Add repository context
   if (chunk.metadata.repository) {
     parts.push(`SDK: ${chunk.metadata.repository}`);
   }
-  
+
   // Add language
   if (chunk.metadata.language) {
     parts.push(`Language: ${chunk.metadata.language}`);
   }
-  
+
   // Add title/heading
   parts.push(chunk.documentTitle);
   if (chunk.heading && chunk.heading !== chunk.documentTitle) {
     parts.push(chunk.heading);
   }
-  
+
   // Add API method context
   if (chunk.metadata.method && chunk.metadata.path) {
     parts.push(`${chunk.metadata.method.toUpperCase()} ${chunk.metadata.path}`);
   }
-  
+
   // Add description
   if (chunk.metadata.description) {
     parts.push(chunk.metadata.description);
   }
-  
+
   // Add the main content
   parts.push(chunk.content);
   const embeddingInput = parts.join('\n\n');
@@ -324,7 +329,9 @@ export async function withRetry<T>(
       const status = (err as { status?: number })?.status;
       if (status !== 429 || attempt === maxAttempts) throw err;
       const delay = baseDelayMs * 2 ** (attempt - 1);
-      console.log(`\n   ⏳ Rate limited, retrying in ${delay / 1000}s (attempt ${attempt}/${maxAttempts})...`);
+      console.log(
+        `\n   ⏳ Rate limited, retrying in ${delay / 1000}s (attempt ${attempt}/${maxAttempts})...`
+      );
       await sleep(delay);
     }
   }

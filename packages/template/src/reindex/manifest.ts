@@ -13,10 +13,17 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import * as path from 'node:path';
-import type { DocChunk } from '../types/index.js';
+import { type DocChunk, toVectorId } from '../types/index.js';
 
-/** Current manifest format version (bump when the hash inputs change). */
-export const MANIFEST_VERSION = 1;
+/**
+ * Current manifest format version. Bump whenever the hash inputs change so old
+ * manifests are treated as a full reindex rather than silently skipping chunks
+ * whose embedding/metadata changed under the old (narrower) hash.
+ *
+ * v2: hash now also covers repository/language/description (embedding inputs)
+ *     and category/version/documentPath (stored metadata).
+ */
+export const MANIFEST_VERSION = 2;
 
 export interface ReindexManifest {
   version: number;
@@ -36,22 +43,39 @@ export interface ReindexDiff {
 
 /**
  * Compute a stable hash of the parts of a chunk that affect its embedding and
- * stored metadata. Changing any of these should trigger a re-embed.
+ * its stored metadata. Changing any of these should trigger a re-embed/upsert.
+ *
+ * The field set must stay in sync with two places:
+ *  - `prepareChunkForEmbedding` (what actually gets embedded): content,
+ *    heading, documentTitle, repository, language, description, method, path.
+ *  - `chunkToRecord` metadata (what's stored alongside the vector): also
+ *    category, version, documentPath, sourceUrl.
+ *
+ * Missing any of these means an edit to that field would NOT re-embed/re-upsert
+ * the chunk, leaving a stale vector or stale metadata in the store.
  */
 export function hashChunk(chunk: DocChunk): string {
   const hash = createHash('sha256');
-  // Order matters and must be stable across runs.
-  hash.update(chunk.content);
-  hash.update('\u0000');
-  hash.update(chunk.heading ?? '');
-  hash.update('\u0000');
-  hash.update(chunk.documentTitle ?? '');
-  hash.update('\u0000');
-  hash.update(chunk.metadata?.sourceUrl ?? '');
-  hash.update('\u0000');
-  hash.update(chunk.metadata?.method ?? '');
-  hash.update('\u0000');
-  hash.update(chunk.metadata?.path ?? '');
+  // Order matters and must be stable across runs. A NUL separator after every
+  // field keeps boundaries unambiguous (avoids "ab"+"c" colliding with "a"+"bc").
+  const fields = [
+    chunk.content,
+    chunk.heading,
+    chunk.documentTitle,
+    chunk.documentPath,
+    chunk.category,
+    chunk.metadata?.sourceUrl,
+    chunk.metadata?.repository,
+    chunk.metadata?.language,
+    chunk.metadata?.description,
+    chunk.metadata?.method,
+    chunk.metadata?.path,
+    chunk.metadata?.version,
+  ];
+  for (const field of fields) {
+    hash.update(field ?? '');
+    hash.update('\u0000');
+  }
   return hash.digest('hex');
 }
 
@@ -82,8 +106,7 @@ export function diffChunks(chunks: DocChunk[], previous: ReindexManifest | null)
   let unchangedCount = 0;
 
   // Treat a version mismatch as a full reindex.
-  const prevHashes =
-    previous && previous.version === MANIFEST_VERSION ? previous.hashes : {};
+  const prevHashes = previous && previous.version === MANIFEST_VERSION ? previous.hashes : {};
 
   const currentIds = new Set<string>();
 
@@ -109,13 +132,9 @@ export function diffChunks(chunks: DocChunk[], previous: ReindexManifest | null)
   return { toUpsert, toDelete, unchangedCount };
 }
 
-/**
- * The sanitized id used as the vector id in the store. Must match the
- * transformation applied in chunkToRecord (`id.replace(/[^a-zA-Z0-9_-]/g, '_')`).
- */
-export function toVectorId(chunkId: string): string {
-  return chunkId.replace(/[^a-zA-Z0-9_-]/g, '_');
-}
+// Re-exported from a single source of truth in ../types so the manifest's
+// delete path and chunkToRecord's upsert path can never drift apart.
+export { toVectorId } from '../types/index.js';
 
 // =============================================================================
 // PERSISTENCE

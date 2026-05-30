@@ -48,6 +48,29 @@ describe('hashChunk', () => {
     expect(hashChunk(c1)).not.toBe(hashChunk(c2));
   });
 
+  // Regression: these fields drive the embedding input or the stored metadata,
+  // so a change in any of them must change the hash (else stale vectors).
+  it.each([
+    ['repository (embedding input)', { repository: 'org/repo-a' }, { repository: 'org/repo-b' }],
+    ['language (embedding input)', { language: 'typescript' }, { language: 'python' }],
+    ['description (embedding input)', { description: 'old desc' }, { description: 'new desc' }],
+    ['version (stored metadata)', { version: '1.0.0' }, { version: '2.0.0' }],
+  ])('changes when %s changes', (_label, metaA, metaB) => {
+    const c1 = chunk('a', 'x', { metadata: metaA });
+    const c2 = chunk('a', 'x', { metadata: metaB });
+    expect(hashChunk(c1)).not.toBe(hashChunk(c2));
+  });
+
+  it.each([
+    ['category (stored metadata)', { category: 'guides' }, { category: 'reference' }],
+    ['documentPath (stored metadata)', { documentPath: 'a.md' }, { documentPath: 'b.md' }],
+    ['documentTitle (embedding input)', { documentTitle: 'A' }, { documentTitle: 'B' }],
+  ])('changes when top-level %s changes', (_label, a, b) => {
+    const c1 = chunk('a', 'x', a);
+    const c2 = chunk('a', 'x', b);
+    expect(hashChunk(c1)).not.toBe(hashChunk(c2));
+  });
+
   it('ignores the id (only content-relevant fields are hashed)', () => {
     expect(hashChunk(chunk('a', 'same'))).toBe(hashChunk(chunk('b', 'same')));
   });
