@@ -6,7 +6,9 @@
   "description": "ContextMCP project template - Self-hosted MCP server for your documentation",
   "scripts": {
     "reindex": "tsx scripts/reindex.ts",
+    "reindex:full": "tsx scripts/reindex.ts --full",
     "reindex:dry": "tsx scripts/reindex.ts --dry-run",
+    "test:manifest": "node --import tsx --test src/embeddings/manifest.test.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

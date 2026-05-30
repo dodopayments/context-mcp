@@ -7,6 +7,12 @@ on:
 
   # Allow manual trigger from GitHub UI
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Force a full rebuild instead of incremental reindex'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   reindex:
@@ -26,9 +32,29 @@ jobs:
       - name: Install dependencies
         run: npm clean-install
 
-      - name: Run full documentation reindex
+      - name: Restore index manifest
+        uses: actions/cache/restore@v4
+        with:
+          path: data/index-manifest.json
+          key: dodo-index-manifest-${{ github.run_id }}
+          restore-keys: |
+            dodo-index-manifest-
+
+      - name: Run documentation reindex
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npm run reindex:dodo
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full }}" = "true" ]; then
+            npm run reindex:dodo:full
+          else
+            npm run reindex:dodo
+          fi
+
+      - name: Save index manifest
+        if: ${{ success() }}
+        uses: actions/cache/save@v4
+        with:
+          path: data/index-manifest.json
+          key: dodo-index-manifest-${{ github.run_id }}

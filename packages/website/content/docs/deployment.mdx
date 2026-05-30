@@ -112,6 +112,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+`npm run reindex` is incremental. Cache `data/index-manifest.json` between workflow runs to avoid re-embedding unchanged chunks on fresh GitHub-hosted runners.
+
 ### Scheduled Reindex
 
 For sources that change externally, add a cron schedule:
@@ -121,6 +123,28 @@ on:
   schedule:
     - cron: '0 2 * * *' # Daily at 2 AM UTC
   workflow_dispatch: # Manual trigger
+```
+
+For scheduled workflows, add an Actions cache step for the generated manifest:
+
+```yaml
+- name: Restore index manifest
+  uses: actions/cache/restore@v4
+  with:
+    path: data/index-manifest.json
+    key: index-manifest-${{ github.run_id }}
+    restore-keys: |
+      index-manifest-
+
+- name: Reindex
+  run: npm run reindex
+
+- name: Save index manifest
+  if: ${{ success() }}
+  uses: actions/cache/save@v4
+  with:
+    path: data/index-manifest.json
+    key: index-manifest-${{ github.run_id }}
 ```
 
 ## Environment Variables

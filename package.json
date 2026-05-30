@@ -15,7 +15,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "reindex:dodo": "tsx packages/template/scripts/reindex.ts --config deployments/dodopayments/config.yaml",
+    "reindex:dodo:full": "tsx packages/template/scripts/reindex.ts --config deployments/dodopayments/config.yaml --full",
     "reindex:dodo:dry": "tsx packages/template/scripts/reindex.ts --config deployments/dodopayments/config.yaml --dry-run",
+    "test:manifest": "npm run test:manifest --workspace=@contextmcp/template",
     "deploy:dodo": "wrangler deploy --config deployments/dodopayments/cloudflare-worker/wrangler.jsonc",
     "dev:dodo": "wrangler dev --config deployments/dodopayments/cloudflare-worker/wrangler.jsonc"
   },

@@ -64,11 +64,14 @@ sources:
 # Install dependencies
 npm install
 
-# Run the indexer
+# Run the indexer (incremental by default)
 npm run reindex
 
 # Or do a dry run first
 npm run reindex:dry
+
+# Force a full rebuild
+npm run reindex:full
 ```
 
 ### 4. Deploy the MCP Server
@@ -87,11 +90,11 @@ npm run deploy
 
 ## Available Parsers
 
-| Parser     | Use Case                                               | Extensions       |
-| ---------- | ------------------------------------------------------ | ---------------- |
-| `mdx`      | MDX/ documentation (Mintlify, Fumadocs)                | `.mdx`           |
-| `markdown` | Plain markdown files (READMEs, CHANGELOGs)             | `.md`            |
-| `openapi`  | OpenAPI/Swagger specifications                         | `.yaml`, `.json` |
+| Parser     | Use Case                                   | Extensions       |
+| ---------- | ------------------------------------------ | ---------------- |
+| `mdx`      | MDX/ documentation (Mintlify, Fumadocs)    | `.mdx`           |
+| `markdown` | Plain markdown files (READMEs, CHANGELOGs) | `.md`            |
+| `openapi`  | OpenAPI/Swagger specifications             | `.yaml`, `.json` |
 
 ## Source Types
 
@@ -120,13 +123,20 @@ npm run deploy
 
 ## Scripts
 
-| Script                               | Description                     |
-| ------------------------------------ | ------------------------------- |
-| `npm run reindex`                    | Index all documentation sources |
-| `npm run reindex:dry`                | Dry run (no uploads)            |
-| `npm run reindex -- --source=<name>` | Index specific source           |
-| `npm run clean:vectors`              | Clear all vectors from Pinecone |
-| `npm run typecheck`                  | TypeScript type checking        |
+| Script                               | Description                                      |
+| ------------------------------------ | ------------------------------------------------ |
+| `npm run reindex`                    | Incrementally index changed documentation chunks |
+| `npm run reindex:full`               | Clear Pinecone and rebuild the full index        |
+| `npm run reindex:dry`                | Dry run (parse and diff only, no uploads)        |
+| `npm run reindex -- --source=<name>` | Incrementally index a specific source            |
+| `npm run clean:vectors`              | Clear all vectors from Pinecone                  |
+| `npm run typecheck`                  | TypeScript type checking                         |
+
+## Incremental Reindexing
+
+`npm run reindex` stores chunk hashes in `data/index-manifest.json` and skips embedding unchanged chunks on later runs. The command reports `added`, `updated`, `unchanged`, and `deleted` counts, then embeds only the added/updated chunks and deletes removed chunk IDs from Pinecone.
+
+The `data/` directory is generated and ignored by git. In CI, cache `data/index-manifest.json` between scheduled runs so incremental reindexing can compare against the previous run.
 
 ## Documentation
 

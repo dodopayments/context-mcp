@@ -30,7 +30,7 @@ embeddings:
 
 sources:
   - name: main-docs
-    displayName: "Documentation"
+    displayName: 'Documentation'
     type: github
     repository: myorg/docs
     branch: main
@@ -41,7 +41,7 @@ sources:
       - .git
 
   - name: api-reference
-    displayName: "API Reference"
+    displayName: 'API Reference'
     type: github
     repository: myorg/api
     path: openapi
@@ -54,7 +54,7 @@ chunking:
   idealChunkSize: 1000
 
 reindex:
-  clearBeforeReindex: true
+  clearBeforeReindex: false
   batchSize: 100
 ```
 
@@ -83,7 +83,7 @@ embeddings:
   dimensions: 3072 # 3072 for large, 1536 for small
 ```
 
-**Cost note:** `text-embedding-3-large` costs ~$0.13 per 1M tokens. For a typical docs site (~500 files), expect ~$0.50-1.00 per full reindex.
+**Cost note:** `text-embedding-3-large` costs ~$0.13 per 1M tokens. Incremental reindexing avoids re-embedding unchanged chunks, so scheduled runs usually cost much less than a full rebuild.
 
 ## Sources
 
@@ -94,7 +94,7 @@ Define where your documentation lives. You can have multiple sources.
 ```yaml
 sources:
   - name: docs # Unique identifier
-    displayName: "My Docs" # Human-readable name
+    displayName: 'My Docs' # Human-readable name
     type: github
     repository: owner/repo # GitHub repo
     branch: main # Optional, defaults to main
@@ -145,9 +145,13 @@ chunking:
 
 ```yaml
 reindex:
-  clearBeforeReindex: true # Clear index before reindexing
+  clearBeforeReindex: false # Incremental by default
   batchSize: 100 # Vectors uploaded per batch
 ```
+
+`npm run reindex` stores chunk hashes in `data/index-manifest.json`, compares the latest parse with that manifest, then reports `added`, `updated`, `unchanged`, and `deleted` counts. Added and updated chunks are embedded and upserted; unchanged chunks are skipped; deleted chunks are removed from Pinecone by ID.
+
+Set `clearBeforeReindex: true` or run `npm run reindex:full` to force a complete rebuild.
 
 ## Using YAML Anchors
 

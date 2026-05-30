@@ -63,8 +63,8 @@ sources:
       - node_modules
       - images
       - logo
-      - openapi        # OpenAPI spec folder (parsed separately)
-      - api-reference  # API reference pages (parsed via OpenAPI source)
+      - openapi # OpenAPI spec folder (parsed separately)
+      - api-reference # API reference pages (parsed via OpenAPI source)
       - snippets
       # Translations (non-English docs)
       - ar
@@ -235,5 +235,5 @@ sources:
     skipFiles: *sdkSkipFiles
 
 reindex:
-  clearBeforeReindex: true
+  clearBeforeReindex: false
   batchSize: 100

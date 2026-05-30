@@ -23,7 +23,7 @@ embeddings:
   # model: text-embedding-3-large
   # dimensions: 3072
 
-  provider: gemini              # Requires GEMINI_API_KEY
+  provider: gemini # Requires GEMINI_API_KEY
   model: gemini-embedding-2-preview
   dimensions: 3072
 
@@ -105,8 +105,8 @@ sources:
 # REINDEXING SETTINGS
 # =============================================================================
 reindex:
-  # Clear all vectors before reindexing (recommended for consistency)
-  clearBeforeReindex: true
+  # Clear all vectors before reindexing (use --full for one-off rebuilds)
+  clearBeforeReindex: false
   # Batch size for embedding generation (higher = faster but more memory)
   batchSize: 100
 

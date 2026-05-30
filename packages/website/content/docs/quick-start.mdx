@@ -62,6 +62,8 @@ See [Configuration](/docs/configuration) for all options.
 npm run reindex
 ```
 
+Reindexing is incremental by default. ContextMCP writes `data/index-manifest.json`, reports `added`, `updated`, `unchanged`, and `deleted` counts, and skips embedding chunks whose content hash did not change. Use `npm run reindex:full` when you need to clear Pinecone and rebuild everything.
+
 ## 4. Deploy
 
 ```bash

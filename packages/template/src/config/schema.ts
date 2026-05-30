@@ -96,7 +96,7 @@ const EmbeddingsSchema = z.object({
 
 // Reindex settings
 const ReindexSchema = z.object({
-  clearBeforeReindex: z.boolean().default(true),
+  clearBeforeReindex: z.boolean().default(false),
   batchSize: z.number().min(1).max(500).default(100),
 });
 
@@ -116,7 +116,7 @@ export const ConfigSchema = z.object({
   ),
   sources: z.array(SourceSchema).min(1, 'At least one source is required'),
   reindex: ReindexSchema.optional().transform(
-    v => v ?? { clearBeforeReindex: true, batchSize: 100 }
+    v => v ?? { clearBeforeReindex: false, batchSize: 100 }
   ),
   chunking: ChunkingSchema,
 });
