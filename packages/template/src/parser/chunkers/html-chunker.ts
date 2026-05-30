@@ -43,7 +43,12 @@ const MAIN_CONTENT_SELECTORS = ['main', 'article', '[role="main"]', '#content', 
 // FILE DISCOVERY
 // =============================================================================
 
-function findHtmlFiles(dir: string, skipDirs: string[], skipFiles: string[], baseDir = dir): string[] {
+export function findHtmlFiles(
+  dir: string,
+  skipDirs: string[],
+  skipFiles: string[],
+  baseDir = dir
+): string[] {
   const files: string[] = [];
   const skipDirsSet = new Set(skipDirs.map(d => d.toLowerCase()));
   const skipFilesSet = new Set(skipFiles.map(f => f.toLowerCase()));
@@ -58,6 +63,9 @@ function findHtmlFiles(dir: string, skipDirs: string[], skipFiles: string[], bas
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      // Intentionally skip dot-directories (e.g. .git, .svn, .next) so we never
+      // descend into VCS/build metadata. (Note: the markdown chunker doesn't do
+      // this today — a known sibling-parser inconsistency tracked separately.)
       if (entry.name.startsWith('.') || skipDirsSet.has(entry.name.toLowerCase())) continue;
       files.push(...findHtmlFiles(fullPath, skipDirs, skipFiles, baseDir));
     } else if (entry.isFile()) {
@@ -96,9 +104,7 @@ export function extractMainHtml(html: string): { title: string; contentHtml: str
 
   // Title: prefer <title>, fall back to first <h1>.
   const title =
-    root.querySelector('title')?.text?.trim() ||
-    root.querySelector('h1')?.text?.trim() ||
-    '';
+    root.querySelector('title')?.text?.trim() || root.querySelector('h1')?.text?.trim() || '';
 
   // Remove boilerplate before extracting content.
   for (const selector of BOILERPLATE_SELECTORS) {

@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { extractMainHtml, htmlToMarkdown } from './html-chunker.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { extractMainHtml, htmlToMarkdown, findHtmlFiles } from './html-chunker.js';
 
 const SAMPLE = `<!DOCTYPE html>
 <html>
@@ -39,6 +42,36 @@ describe('extractMainHtml', () => {
     const html = '<body><h1>Fallback Title</h1><main><p>hi</p></main></body>';
     expect(extractMainHtml(html).title).toBe('Fallback Title');
   });
+
+  // Guard the main-content fallback chain so a parser-lib regression in any
+  // selector is caught. Each variant has no <main>/<article>, forcing the next
+  // selector in MAIN_CONTENT_SELECTORS (or the <body> fallback) to be used.
+  it.each([
+    [
+      '[role="main"]',
+      '<body><nav>NAV</nav><div role="main"><p>ROLE_MAIN_BODY</p></div></body>',
+      'ROLE_MAIN_BODY',
+    ],
+    [
+      '#content',
+      '<body><nav>NAV</nav><div id="content"><p>ID_CONTENT_BODY</p></div></body>',
+      'ID_CONTENT_BODY',
+    ],
+    [
+      '.content',
+      '<body><nav>NAV</nav><div class="content"><p>CLASS_CONTENT_BODY</p></div></body>',
+      'CLASS_CONTENT_BODY',
+    ],
+  ])('extracts main content via the %s fallback selector', (_label, html, expected) => {
+    const { contentHtml } = extractMainHtml(html);
+    expect(contentHtml).toContain(expected);
+    expect(contentHtml).not.toContain('NAV');
+  });
+
+  it('falls back to <body> when no known content container exists', () => {
+    const html = '<body><p>PLAIN_BODY_CONTENT</p></body>';
+    expect(extractMainHtml(html).contentHtml).toContain('PLAIN_BODY_CONTENT');
+  });
 });
 
 describe('htmlToMarkdown', () => {
@@ -66,5 +99,43 @@ describe('htmlToMarkdown', () => {
     const { markdown } = htmlToMarkdown(SAMPLE);
     expect(markdown).not.toContain('NAV LINKS');
     expect(markdown).not.toContain('SITE FOOTER');
+  });
+});
+
+describe('findHtmlFiles', () => {
+  const tmpDirs: string[] = [];
+  afterEach(() => {
+    for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  function stage(files: string[]): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'html-find-'));
+    tmpDirs.push(dir);
+    for (const rel of files) {
+      const full = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, '<html><body><p>x</p></body></html>');
+    }
+    return dir;
+  }
+
+  it('finds .html/.htm files recursively', () => {
+    const dir = stage(['a.html', 'sub/b.htm', 'sub/deep/c.html', 'notes.txt']);
+    const found = findHtmlFiles(dir, [], []).sort();
+    expect(found).toEqual(
+      ['a.html', 'sub/b.htm', 'sub/deep/c.html'].map(p => p.split('/').join(path.sep))
+    );
+  });
+
+  it('skips dot-directories (e.g. .git) by design', () => {
+    const dir = stage(['ok.html', '.git/config.html', '.hidden/secret.html']);
+    const found = findHtmlFiles(dir, [], []);
+    expect(found).toEqual(['ok.html']);
+  });
+
+  it('honors skipDirs and skipFiles (case-insensitive)', () => {
+    const dir = stage(['keep.html', 'Vendor/skip.html', 'IGNORE.html']);
+    const found = findHtmlFiles(dir, ['vendor'], ['ignore.html']);
+    expect(found).toEqual(['keep.html']);
   });
 });
