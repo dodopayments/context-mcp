@@ -40,6 +40,14 @@ interface Env {
   DEFAULT_TOP_K: string;
   MAX_TOP_K: string;
 
+  // Vector DB selection. Defaults to 'pinecone' when unset.
+  VECTORDB_PROVIDER: string; // 'pinecone' | 'qdrant'
+  // Qdrant settings (used when VECTORDB_PROVIDER === 'qdrant').
+  QDRANT_URL: string;
+  QDRANT_API_KEY: string;
+  QDRANT_COLLECTION: string;
+  VECTORDB_NAMESPACE: string;
+
   // Reranking configuration
   ENABLE_RERANK: string;
   RERANK_MODEL: string;
@@ -119,6 +127,65 @@ async function rerankWithPinecone(
     console.error('[Rerank] Failed:', error);
     return documents.slice(0, topN);
   }
+}
+
+/**
+ * Search a Qdrant collection via its REST API. Mirrors the Pinecone path's
+ * result shape. Reranking is Pinecone-specific (uses Pinecone's inference API),
+ * so the Qdrant path returns vector-similarity order directly.
+ *
+ * Namespaces are emulated the same way QdrantStore writes them: each point is
+ * tagged with a `_namespace` payload field, so we filter on it when set.
+ */
+async function searchDocsQdrant(env: Env, query: string, limit?: number): Promise<SearchResult[]> {
+  const defaultTopK = parseInt(env.DEFAULT_TOP_K, 10) || 10;
+  const maxTopK = parseInt(env.MAX_TOP_K, 10) || 20;
+  const returnCount = Math.min(Math.max(1, limit ?? defaultTopK), maxTopK);
+
+  const baseUrl = (env.QDRANT_URL || 'http://localhost:6333').replace(/\/$/, '');
+  const collection = env.QDRANT_COLLECTION || env.PINECONE_INDEX_NAME;
+  const namespace = env.VECTORDB_NAMESPACE || '';
+
+  const queryEmbedding = await generateQueryEmbedding(env, query);
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (env.QDRANT_API_KEY) headers['api-key'] = env.QDRANT_API_KEY;
+
+  const body: Record<string, unknown> = {
+    vector: queryEmbedding,
+    limit: returnCount,
+    with_payload: true,
+  };
+  if (namespace) {
+    body.filter = { must: [{ key: '_namespace', match: { value: namespace } }] };
+  }
+
+  const res = await fetch(`${baseUrl}/collections/${collection}/points/search`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`Qdrant search failed: ${res.status} ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as {
+    result?: { score?: number; payload?: Record<string, unknown> }[];
+  };
+
+  return (data.result || []).map(match => {
+    const p = match.payload ?? {};
+    return {
+      score: Math.round((match.score || 0) * 100) / 100,
+      title: String(p.documentTitle || ''),
+      heading: String(p.heading || ''),
+      content: String(p.content || ''),
+      url: p.sourceUrl as string | undefined,
+      method: p.method as string | undefined,
+      path: p.path as string | undefined,
+      language: p.language as string | undefined,
+    };
+  });
 }
 
 async function searchDocs(
@@ -202,7 +269,11 @@ export class ContextMCP extends McpAgent<Env> {
     const serverName = env.SERVER_NAME || 'contextmcp';
     const description = env.SERVER_DESCRIPTION || 'Search documentation';
 
-    const pinecone = new Pinecone({ apiKey: env.PINECONE_API_KEY });
+    const vectorProvider = (env.VECTORDB_PROVIDER || 'pinecone').toLowerCase();
+    // Only construct the Pinecone client when it's the active backend, so a
+    // Qdrant-only deployment doesn't require a PINECONE_API_KEY.
+    const pinecone =
+      vectorProvider === 'qdrant' ? null : new Pinecone({ apiKey: env.PINECONE_API_KEY });
 
     this.server.registerTool(
       'search_docs',
@@ -227,7 +298,10 @@ export class ContextMCP extends McpAgent<Env> {
       },
       async ({ query, limit }) => {
         try {
-          const results = await searchDocs(pinecone, env, query, limit);
+          const results =
+            vectorProvider === 'qdrant'
+              ? await searchDocsQdrant(env, query, limit)
+              : await searchDocs(pinecone!, env, query, limit);
           const formatted = formatResults(results, query, serverName);
 
           return {

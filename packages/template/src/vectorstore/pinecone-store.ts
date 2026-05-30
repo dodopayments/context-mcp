@@ -79,6 +79,15 @@ export class PineconeStore implements VectorStore {
     await index.upsert(records);
   }
 
+  /**
+   * Delete all vectors in the configured namespace.
+   *
+   * Behavior note: this scopes the delete to `this.namespace` (the empty/default
+   * namespace when none is configured). If you set `vectordb.namespace`, clear
+   * only removes that namespace's vectors — not the entire index. (The reported
+   * count comes from index-wide stats, so with a non-default namespace the
+   * "found N vectors" log may exceed what's actually deleted.)
+   */
   async clear(): Promise<{ success: boolean; vectorCount?: number }> {
     try {
       const index = this.index();

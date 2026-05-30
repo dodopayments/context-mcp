@@ -8,6 +8,7 @@
  * @see https://qdrant.tech/documentation/concepts/points/
  */
 
+import { createHash } from 'node:crypto';
 import type {
   VectorStore,
   VectorStoreStats,
@@ -22,7 +23,23 @@ export interface QdrantStoreConfig {
   collection: string;
   /** API key for Qdrant Cloud (optional for local). */
   apiKey?: string;
+  /**
+   * Optional namespace. Qdrant has no native namespaces, so we emulate them by
+   * tagging each point's payload with `_namespace` and filtering reads/clears by
+   * it — matching how PineconeStore scopes its namespace.
+   */
+  namespace?: string;
 }
+
+/**
+ * Fixed UUIDv5 namespace for ContextMCP point ids (a random constant UUID).
+ * Combined with the chunk id via SHA-1 to derive a collision-resistant,
+ * deterministic point id.
+ */
+const POINT_ID_NAMESPACE = '6f9a6c1e-0d3b-5e4a-9b2c-7e8f1a2b3c4d';
+
+/** Field used to emulate namespaces in the point payload. */
+const NAMESPACE_FIELD = '_namespace';
 
 // Qdrant distance names differ from the generic metric names.
 const METRIC_TO_QDRANT: Record<NonNullable<EnsureIndexOptions['metric']>, string> = {
@@ -33,21 +50,26 @@ const METRIC_TO_QDRANT: Record<NonNullable<EnsureIndexOptions['metric']>, string
 
 /**
  * Convert an embedding record's id into a Qdrant-acceptable point id.
+ *
  * Qdrant point ids must be an unsigned integer or a UUID; our ids are arbitrary
- * strings, so we deterministically derive a UUIDv5-like id from the string and
- * keep the original id in the payload for retrieval.
+ * strings, so we derive a proper RFC 4122 **UUIDv5** (SHA-1 over a fixed
+ * namespace + the full id). This uses the full 122 random bits of a UUID, so
+ * birthday-collision odds are negligible even for very large corpora — unlike
+ * the previous ~64-bit FNV pair whose two halves came from nearly identical
+ * seeds. Deterministic, so re-indexing the same chunk overwrites its point.
  */
 export function toQdrantPointId(id: string): string {
-  // FNV-1a 128-bit-ish hash spread across 32 hex chars, formatted as a UUID.
-  // Deterministic so re-indexing the same chunk overwrites its point.
-  let h1 = 0x811c9dc5;
-  let h2 = 0x811c9dc5;
-  for (let i = 0; i < id.length; i++) {
-    const c = id.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
-    h2 = Math.imul(h2 ^ (c + 0x9e), 0x01000193) >>> 0;
-  }
-  const hex = (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).padEnd(32, '0');
+  // UUIDv5: SHA-1(namespace_bytes || name), then set version/variant bits.
+  const nsBytes = Buffer.from(POINT_ID_NAMESPACE.replace(/-/g, ''), 'hex');
+  const hash = createHash('sha1').update(nsBytes).update(Buffer.from(id, 'utf8')).digest();
+
+  const bytes = hash.subarray(0, 16);
+  // Version 5 (0101 in the high nibble of byte 6).
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  // RFC 4122 variant (10xx in the high bits of byte 8).
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = bytes.toString('hex');
   return (
     `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-` +
     `${hex.slice(16, 20)}-${hex.slice(20, 32)}`
@@ -59,11 +81,22 @@ export class QdrantStore implements VectorStore {
   private baseUrl: string;
   private collection: string;
   private apiKey?: string;
+  private namespace: string;
 
   constructor(config: QdrantStoreConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
     this.collection = config.collection;
     this.apiKey = config.apiKey;
+    this.namespace = config.namespace ?? '';
+  }
+
+  /**
+   * A Qdrant filter scoping operations to the configured namespace, or
+   * undefined when no namespace is set (operate on the whole collection).
+   */
+  private namespaceFilter(): Record<string, unknown> | undefined {
+    if (!this.namespace) return undefined;
+    return { must: [{ key: NAMESPACE_FIELD, match: { value: this.namespace } }] };
   }
 
   private headers(): Record<string, string> {
@@ -106,17 +139,22 @@ export class QdrantStore implements VectorStore {
   async upsert(records: EmbeddingRecord[]): Promise<void> {
     if (records.length === 0) return;
     const points = records.map(r => ({
-      id: toQdrantPointId(r.id),
+      // Scope the point id by namespace so the same chunk id in two namespaces
+      // doesn't collide into one point (and overwrite the other).
+      id: toQdrantPointId(this.namespace ? `${this.namespace}\u0000${r.id}` : r.id),
       vector: r.values,
-      // Keep the original id alongside the metadata for retrieval/debugging.
-      payload: { ...r.metadata, _id: r.id },
+      // Keep the original id and namespace alongside the metadata for
+      // retrieval/debugging and namespace filtering.
+      payload: {
+        ...r.metadata,
+        _id: r.id,
+        ...(this.namespace ? { [NAMESPACE_FIELD]: this.namespace } : {}),
+      },
     }));
 
-    const res = await this.request(
-      'PUT',
-      `/collections/${this.collection}/points?wait=true`,
-      { points }
-    );
+    const res = await this.request('PUT', `/collections/${this.collection}/points?wait=true`, {
+      points,
+    });
     if (!res.ok) {
       throw new Error(`Qdrant upsert failed: ${res.status} ${await res.text()}`);
     }
@@ -131,11 +169,12 @@ export class QdrantStore implements VectorStore {
       }
       console.log(`   Found ${before.vectorCount.toLocaleString()} vectors to delete...`);
 
-      // Delete all points by an always-true filter (empty filter matches all).
+      // Scope the delete to the namespace when set; otherwise an empty filter
+      // matches all points in the collection.
       const res = await this.request(
         'POST',
         `/collections/${this.collection}/points/delete?wait=true`,
-        { filter: {} }
+        { filter: this.namespaceFilter() ?? {} }
       );
       if (!res.ok) {
         console.error(`   Error clearing collection: ${res.status} ${await res.text()}`);
@@ -156,9 +195,23 @@ export class QdrantStore implements VectorStore {
     const data = (await res.json()) as {
       result?: { points_count?: number; config?: { params?: { vectors?: { size?: number } } } };
     };
-    return {
-      vectorCount: data.result?.points_count ?? 0,
-      dimension: data.result?.config?.params?.vectors?.size,
-    };
+    const dimension = data.result?.config?.params?.vectors?.size;
+
+    // Whole-collection count is in the collection info; a namespaced count needs
+    // a filtered count query so we only report this namespace's vectors.
+    const filter = this.namespaceFilter();
+    if (!filter) {
+      return { vectorCount: data.result?.points_count ?? 0, dimension };
+    }
+
+    const countRes = await this.request('POST', `/collections/${this.collection}/points/count`, {
+      filter,
+      exact: true,
+    });
+    if (!countRes.ok) {
+      throw new Error(`Failed to count Qdrant points: ${countRes.status} ${await countRes.text()}`);
+    }
+    const countData = (await countRes.json()) as { result?: { count?: number } };
+    return { vectorCount: countData.result?.count ?? 0, dimension };
   }
 }

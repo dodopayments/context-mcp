@@ -39,6 +39,7 @@ export function createVectorStore(config: ContextMCPConfig): VectorStore {
         url: process.env.QDRANT_URL || vectordb.qdrant?.url || 'http://localhost:6333',
         collection: vectordb.indexName,
         apiKey: process.env.QDRANT_API_KEY,
+        namespace: vectordb.namespace,
       });
 
     default:
