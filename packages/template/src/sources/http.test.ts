@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchWithRetry, HttpError } from './http.js';
+import { fetchWithRetry, HttpError, TimeoutError } from './http.js';
 
 const realFetch = globalThis.fetch;
 
@@ -46,5 +46,63 @@ describe('fetchWithRetry', () => {
       fetchWithRetry('https://example.com', { baseDelayMs: 1, maxAttempts: 3 })
     ).rejects.toBeInstanceOf(HttpError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // A fetch that honours the abort signal by rejecting with an AbortError,
+  // exactly as the platform fetch does when our timeout fires.
+  function abortableFetch(): typeof fetch {
+    return vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  it('retries a per-attempt timeout (translated to a retryable TimeoutError)', async () => {
+    const fetchMock = abortableFetch();
+    globalThis.fetch = fetchMock;
+
+    await expect(
+      fetchWithRetry('https://slow.example.com', {
+        timeoutMs: 5,
+        baseDelayMs: 1,
+        maxAttempts: 3,
+      })
+    ).rejects.toBeInstanceOf(TimeoutError);
+
+    // Proves the timeout was classified retryable: all attempts were used.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('eventually succeeds when a timeout is followed by a 200', async () => {
+    let call = 0;
+    globalThis.fetch = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+      call++;
+      if (call === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      }
+      return Promise.resolve(mockResponse(200, 'ok'));
+    }) as unknown as typeof fetch;
+
+    const res = await fetchWithRetry('https://example.com', {
+      timeoutMs: 5,
+      baseDelayMs: 1,
+      maxAttempts: 3,
+    });
+    expect(res.status).toBe(200);
+    expect(call).toBe(2);
   });
 });

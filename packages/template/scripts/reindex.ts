@@ -97,33 +97,39 @@ Examples:
 `);
 }
 
-
 // =============================================================================
 // EMBEDDING & UPLOAD
 // =============================================================================
 
-type EmbedClient = {
-  provider: 'openai';
-  openai: OpenAI;
-  model: string;
-} | {
-  provider: 'gemini';
-  gemini: GoogleGenAI;
-  model: string;
-  dimensions: number;
-} | {
-  provider: 'cohere';
-  apiKey: string;
-  model: string;
-} | {
-  provider: 'voyage';
-  apiKey: string;
-  model: string;
-} | {
-  provider: 'ollama';
-  baseUrl: string;
-  model: string;
-}
+type EmbedClient =
+  | {
+      provider: 'openai';
+      openai: OpenAI;
+      model: string;
+    }
+  | {
+      provider: 'gemini';
+      gemini: GoogleGenAI;
+      model: string;
+      dimensions: number;
+    }
+  | {
+      provider: 'cohere';
+      apiKey: string;
+      model: string;
+      dimensions: number;
+    }
+  | {
+      provider: 'voyage';
+      apiKey: string;
+      model: string;
+      dimensions: number;
+    }
+  | {
+      provider: 'ollama';
+      baseUrl: string;
+      model: string;
+    };
 
 async function embedAndUpload(
   chunks: DocChunk[],
@@ -148,13 +154,28 @@ async function embedAndUpload(
     let embeddings: number[][];
     switch (client.provider) {
       case 'gemini':
-        embeddings = await generateEmbeddingsGemini(client.gemini, client.model, texts, client.dimensions);
+        embeddings = await generateEmbeddingsGemini(
+          client.gemini,
+          client.model,
+          texts,
+          client.dimensions
+        );
         break;
       case 'cohere':
-        embeddings = await generateEmbeddingsCohere(client.apiKey, client.model, texts);
+        embeddings = await generateEmbeddingsCohere(
+          client.apiKey,
+          client.model,
+          texts,
+          client.dimensions
+        );
         break;
       case 'voyage':
-        embeddings = await generateEmbeddingsVoyage(client.apiKey, client.model, texts);
+        embeddings = await generateEmbeddingsVoyage(
+          client.apiKey,
+          client.model,
+          texts,
+          client.dimensions
+        );
         break;
       case 'ollama':
         embeddings = await generateEmbeddingsOllama(client.baseUrl, client.model, texts);
@@ -246,6 +267,7 @@ async function reindex(): Promise<void> {
           provider: 'cohere',
           apiKey: process.env.COHERE_API_KEY!,
           model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
         };
         break;
       case 'voyage':
@@ -253,6 +275,7 @@ async function reindex(): Promise<void> {
           provider: 'voyage',
           apiKey: process.env.VOYAGE_API_KEY!,
           model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
         };
         break;
       case 'ollama':

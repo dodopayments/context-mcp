@@ -97,6 +97,8 @@ async function generateQueryEmbedding(env: Env, query: string): Promise<number[]
         texts: [query],
         input_type: 'search_query',
         embedding_types: ['float'],
+        // Must match the dimension the index was built with (see reindex).
+        output_dimension: dimensions,
       }),
     });
     if (!res.ok) throw new Error(`Cohere embed failed: ${res.status} ${res.statusText}`);
@@ -111,7 +113,13 @@ async function generateQueryEmbedding(env: Env, query: string): Promise<number[]
         Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: env.EMBEDDING_MODEL, input: [query], input_type: 'query' }),
+      body: JSON.stringify({
+        model: env.EMBEDDING_MODEL,
+        input: [query],
+        input_type: 'query',
+        // Must match the dimension the index was built with (see reindex).
+        output_dimension: dimensions,
+      }),
     });
     if (!res.ok) throw new Error(`Voyage embed failed: ${res.status} ${res.statusText}`);
     const data = (await res.json()) as { data?: { embedding: number[] }[] };
