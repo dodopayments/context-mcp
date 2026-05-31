@@ -20,16 +20,13 @@ interface InitOptions {
   install?: boolean;
 }
 
-function runCommand(command: string, cwd: string): boolean {
+function runCommand(command: string, cwd: string): string | null {
   try {
     execSync(command, { cwd, stdio: 'pipe' });
-    return true;
+    return null;
   } catch (error) {
-    console.warn(chalk.yellow(`\n Command failed: ${command}`));
-    if (error instanceof Error) {
-      console.warn(chalk.dim(`   ${error.message}`));
-    }
-    return false;
+    if (!(error instanceof Error)) return null;
+    return `Command failed: ${command}\n   ${error.message}`;
   }
 }
 
@@ -197,12 +194,12 @@ export async function initCommand(projectName?: string, options: InitOptions = {
   if (options.install !== false) {
     const installSpinner = ora('Installing dependencies...').start();
 
-    const success = runCommand('npm install', targetDir);
+    const errorMsg = runCommand('npm install', targetDir);
 
-    if (success) {
+    if (errorMsg === null) {
       installSpinner.succeed('Dependencies installed');
     } else {
-      installSpinner.warn('Could not install dependencies. Run "npm install" manually.');
+      installSpinner.warn(chalk.yellow(`Could not install dependencies.\n${errorMsg}\nRun "npm install" manually.`));
     }
   }
 
