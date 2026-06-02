@@ -89,7 +89,11 @@ vectordb:
 
 ## Embeddings
 
-Configure the model used to generate vector embeddings.
+Configure the model used to generate vector embeddings. ContextMCP supports two
+providers — **OpenAI** and **Google Gemini**. Pick whichever you prefer; you only
+need the API key for the provider you choose.
+
+### OpenAI (default)
 
 ```yaml
 embeddings:
@@ -98,7 +102,35 @@ embeddings:
   dimensions: 3072 # 3072 for large, 1536 for small
 ```
 
+Requires `OPENAI_API_KEY`.
+
 **Cost note:** `text-embedding-3-large` costs ~$0.13 per 1M tokens. For a typical docs site (~500 files), expect ~$0.50-1.00 per full reindex.
+
+### Google Gemini
+
+```yaml
+embeddings:
+  provider: gemini
+  model: gemini-embedding-2-preview
+  dimensions: 3072
+```
+
+Requires `GEMINI_API_KEY`.
+
+### Provider Comparison
+
+| Provider | `model`                      | `dimensions` | Required env var |
+| -------- | ---------------------------- | ------------ | ---------------- |
+| `openai` | `text-embedding-3-large`     | `3072`       | `OPENAI_API_KEY` |
+| `gemini` | `gemini-embedding-2-preview` | `3072`       | `GEMINI_API_KEY` |
+
+> **Note:** The `dimensions` value must match the model you choose, and the
+> Pinecone index must be created with the same dimension. If you switch providers
+> or models with a different dimension, recreate the index.
+
+The Cloudflare worker selects the provider at runtime via the `EMBEDDING_PROVIDER`,
+`EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS` variables in `wrangler.jsonc` — keep
+these in sync with your `config.yaml`.
 
 ## Sources
 

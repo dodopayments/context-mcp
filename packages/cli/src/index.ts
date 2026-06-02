@@ -11,14 +11,31 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initCommand } from './commands/init.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function getPackageVersion(): string {
+  const packageJsonPath = path.resolve(__dirname, '../package.json');
+
+  try {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { version?: string };
+    return packageJson.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 
 const program = new Command();
 
 program
   .name('contextmcp')
   .description('CLI to scaffold a ContextMCP documentation RAG server')
-  .version('0.1.0');
+  .version(getPackageVersion());
 
 program
   .command('init [project-name]')
