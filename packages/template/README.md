@@ -14,8 +14,21 @@ cp .env.example .env
 
 Required environment variables:
 
-- `PINECONE_API_KEY` - Your Pinecone API key
-- `OPENAI_API_KEY` - Your OpenAI API key
+- `PINECONE_API_KEY` - Your Pinecone API key (always required)
+- One embedding provider key, matching `embeddings.provider` in `config.yaml`:
+  - `OPENAI_API_KEY` - if `provider: openai` (default)
+  - `GEMINI_API_KEY` - if `provider: gemini`
+
+### Embedding Providers
+
+ContextMCP supports two embedding providers. Pick one in `config.yaml`:
+
+| Provider | `model`                     | `dimensions` | Env var          |
+| -------- | --------------------------- | ------------ | ---------------- |
+| `openai` | `text-embedding-3-large`    | `3072`       | `OPENAI_API_KEY` |
+| `gemini` | `gemini-embedding-2-preview`| `3072`       | `GEMINI_API_KEY` |
+
+You only need the API key for the provider you choose.
 
 ### 2. Configure Documentation Sources
 
@@ -77,7 +90,7 @@ npm run reindex:dry
 cd cloudflare-worker
 npm install
 
-# Set secrets
+# Set secrets (use GEMINI_API_KEY instead of OPENAI_API_KEY if provider: gemini)
 wrangler secret put PINECONE_API_KEY
 wrangler secret put OPENAI_API_KEY
 
@@ -109,7 +122,7 @@ npm run deploy
 │   ├── parser/           # Document parsers
 │   │   ├── chunkers/     # MDX, Markdown, OpenAPI chunkers
 │   │   └── core/         # Shared utilities
-│   ├── embeddings/       # OpenAI embedding generation
+│   ├── embeddings/       # Embedding generation (OpenAI / Gemini)
 │   ├── sources/          # GitHub, local, URL fetchers
 │   ├── config/           # Config schema and loader
 │   └── types/            # TypeScript types
@@ -146,4 +159,4 @@ For full documentation, visit [contextmcp.ai/docs](https://contextmcp.ai/docs)
 
 ## License
 
-MIT
+Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
