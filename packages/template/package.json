@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "clean:vectors": "tsx scripts/clean-vectors.ts"
+    "clean:vectors": "tsx scripts/clean-vectors.ts",
+    "index:txt": "tsx scripts/index-to-txt.ts"
   },
   "keywords": [
     "mcp",
