@@ -23,7 +23,8 @@ npm install
 
 # Configure your API keys
 cp .env.example .env
-# Edit .env with your PINECONE_API_KEY and OPENAI_API_KEY
+# Edit .env with your PINECONE_API_KEY and an embedding provider key
+# (OPENAI_API_KEY for provider: openai, or GEMINI_API_KEY for provider: gemini)
 
 # Configure your documentation sources
 # Edit config.yaml
@@ -54,7 +55,7 @@ ContextMCP creates a searchable knowledge base from your documentation that AI a
 
 1. **Parse** - Extract content from your docs, APIs, and READMEs
 2. **Chunk** - Split into semantic chunks optimized for search
-3. **Embed** - Generate embeddings using OpenAI
+3. **Embed** - Generate embeddings using OpenAI or Gemini
 4. **Store** - Upload to Pinecone vector database
 5. **Search** - Query via MCP from AI assistants
 

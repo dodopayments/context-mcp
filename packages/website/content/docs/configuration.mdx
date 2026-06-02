@@ -74,7 +74,12 @@ vectordb:
 
 ## Embeddings
 
-Configure the model used to generate vector embeddings.
+Configure the model used to generate vector embeddings. ContextMCP supports two
+providers — **OpenAI**, **Google Gemini**, **Cohere**, **Voyage AI**, and
+**Ollama** (local). Pick whichever you prefer; you only need the API key for the
+provider you choose (Ollama needs none).
+
+### OpenAI (default)
 
 ```yaml
 embeddings:
@@ -83,30 +88,42 @@ embeddings:
   dimensions: 3072 # 3072 for large, 1536 for small
 ```
 
+Requires `OPENAI_API_KEY`.
+
 **Cost note:** `text-embedding-3-large` costs ~$0.13 per 1M tokens. For a typical docs site (~500 files), expect ~$0.50-1.00 per full reindex.
 
-### Supported Providers
-
-| Provider | Example model                | Required env var |
-| -------- | ---------------------------- | ---------------- |
-| `openai` | `text-embedding-3-large`     | `OPENAI_API_KEY` |
-| `gemini` | `gemini-embedding-2-preview` | `GEMINI_API_KEY` |
-| `cohere` | `embed-v4.0`                 | `COHERE_API_KEY` |
-| `voyage` | `voyage-3`                   | `VOYAGE_API_KEY` |
-| `ollama` | `nomic-embed-text`           | _(none — local)_ |
-
-Set `embeddings.provider`, `embeddings.model`, and `embeddings.dimensions` to
-match your chosen provider, and set the corresponding API key. The Cloudflare
-worker reads the same provider via the `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL`
-/ `EMBEDDING_DIMENSIONS` variables — keep them in sync.
+### Google Gemini
 
 ```yaml
-# Example: Voyage AI
+embeddings:
+  provider: gemini
+  model: gemini-embedding-2-preview
+  dimensions: 3072
+```
+
+Requires `GEMINI_API_KEY`.
+
+### Cohere
+
+```yaml
+embeddings:
+  provider: cohere
+  model: embed-v4.0
+  dimensions: 1536
+```
+
+Requires `COHERE_API_KEY`.
+
+### Voyage AI
+
+```yaml
 embeddings:
   provider: voyage
   model: voyage-3
   dimensions: 1024
 ```
+
+Requires `VOYAGE_API_KEY`.
 
 ### Local Embeddings with Ollama
 
@@ -128,6 +145,24 @@ Pull the model first: `ollama pull nomic-embed-text`.
 > time, and Workers cannot reach `localhost`. To serve an Ollama-indexed corpus,
 > expose your Ollama server on a reachable URL and set `OLLAMA_BASE_URL` in the
 > worker — or run the self-hosted Node server (see the self-hosting docs).
+
+### Provider Comparison
+
+| Provider | `model`                      | `dimensions` | Required env var |
+| -------- | ---------------------------- | ------------ | ---------------- |
+| `openai` | `text-embedding-3-large`     | `3072`       | `OPENAI_API_KEY` |
+| `gemini` | `gemini-embedding-2-preview` | `3072`       | `GEMINI_API_KEY` |
+| `cohere` | `embed-v4.0`                 | `1536`       | `COHERE_API_KEY` |
+| `voyage` | `voyage-3`                   | `1024`       | `VOYAGE_API_KEY` |
+| `ollama` | `nomic-embed-text`           | `768`        | _(none — local)_ |
+
+> **Note:** The `dimensions` value must match the model you choose, and the
+> Pinecone index must be created with the same dimension. If you switch providers
+> or models with a different dimension, recreate the index.
+
+The Cloudflare worker selects the provider at runtime via the `EMBEDDING_PROVIDER`,
+`EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS` variables in `wrangler.jsonc` — keep
+these in sync with your `config.yaml`.
 
 ## Sources
 
