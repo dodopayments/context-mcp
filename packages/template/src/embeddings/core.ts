@@ -53,10 +53,11 @@ export interface EmbeddingRecord {
 export async function generateEmbeddingsOpenAI(
   openai: OpenAI,
   texts: string[],
-  model: string
+  model: string,
+  dimensions: number
 ): Promise<number[][]> {
   return withRetry(() =>
-    openai.embeddings.create({ model, input: texts })
+    openai.embeddings.create({ model, input: texts, dimensions })
       .then(response => response.data.map(e => e.embedding))
   );
 }
