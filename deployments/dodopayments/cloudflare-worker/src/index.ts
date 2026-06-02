@@ -79,7 +79,7 @@ async function generateQueryEmbedding(env: Env, query: string): Promise<number[]
 
   // Default: OpenAI
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const response = await openai.embeddings.create({ model: env.EMBEDDING_MODEL, input: [query] });
+  const response = await openai.embeddings.create({ model: env.EMBEDDING_MODEL, input: [query], dimensions });
   return response.data[0].embedding;
 }
 
