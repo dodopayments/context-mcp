@@ -131,6 +131,27 @@ describe('withRetry', () => {
     ).rejects.toThrow('custom');
     expect(calls).toBe(1);
   });
+
+  it('uses a server-supplied Retry-After delay instead of the exponential backoff', async () => {
+    // baseDelayMs is huge (10s); the server says retry in 30ms. If the
+    // Retry-After header is honoured the call resolves quickly, proving the
+    // header overrides the configured backoff rather than being ignored.
+    let calls = 0;
+    const start = Date.now();
+    const result = await withRetry(
+      async () => {
+        calls++;
+        if (calls < 2) throw { status: 429, headers: { 'retry-after': '0' } };
+        return 'ok';
+      },
+      { maxAttempts: 3, baseDelayMs: 10000 }
+    );
+    const elapsed = Date.now() - start;
+    expect(result).toBe('ok');
+    expect(calls).toBe(2);
+    // Would be ~10s if the backoff were used; Retry-After: 0 makes it near-instant.
+    expect(elapsed).toBeLessThan(1000);
+  });
 });
 
 describe('retryAfterMs', () => {

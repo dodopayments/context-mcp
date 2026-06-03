@@ -56,6 +56,12 @@ export class TimeoutError extends Error {
  * Fetch a URL with a per-attempt timeout and automatic retries on transient
  * failures (429/408/5xx/network errors). Throws HttpError on a final non-OK
  * response, or the underlying error on a final network/timeout failure.
+ *
+ * NOTE: the defaults here (maxAttempts=4, baseDelayMs=1000) are intentionally
+ * tighter than `withRetry`'s embedding-API defaults (maxAttempts=5,
+ * baseDelayMs=2000). Page fetches are cheap and latency-sensitive, so we fail
+ * faster; embedding API calls are more expensive/rate-limited and warrant a
+ * longer, more patient backoff.
  */
 export async function fetchWithRetry(
   url: string,

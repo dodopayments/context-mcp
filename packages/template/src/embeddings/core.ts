@@ -55,10 +55,12 @@ export async function generateEmbeddingsOpenAI(
   texts: string[],
   model: string
 ): Promise<number[][]> {
-  return withRetry(() =>
-    openai.embeddings
-      .create({ model, input: texts })
-      .then(response => response.data.map(e => e.embedding))
+  return withRetry(
+    () =>
+      openai.embeddings
+        .create({ model, input: texts })
+        .then(response => response.data.map(e => e.embedding)),
+    { label: 'OpenAI embeddings' }
   );
 }
 
@@ -72,17 +74,19 @@ export async function generateEmbeddingsGemini(
   texts: string[],
   dimensions: number
 ): Promise<number[][]> {
-  return withRetry(() =>
-    gemini.models
-      .embedContent({
-        model,
-        contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
-        config: {
-          taskType: 'RETRIEVAL_DOCUMENT' as const,
-          outputDimensionality: dimensions,
-        },
-      })
-      .then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+  return withRetry(
+    () =>
+      gemini.models
+        .embedContent({
+          model,
+          contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+          config: {
+            taskType: 'RETRIEVAL_DOCUMENT' as const,
+            outputDimensionality: dimensions,
+          },
+        })
+        .then(response => (response.embeddings ?? []).map(e => e.values ?? [])),
+    { label: 'Gemini embeddings' }
   );
 }
 
