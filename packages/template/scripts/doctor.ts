@@ -25,6 +25,7 @@ import {
   hasFailure,
   type CheckResult,
 } from '../src/config/doctor-checks.js';
+import { CONFIG_PATHS, findConfigFile } from '../src/config/loader.js';
 
 interface CliArgs {
   config?: string;
@@ -36,7 +37,15 @@ function parseArgs(): CliArgs {
   for (let i = 2; i < process.argv.length; i++) {
     const arg = process.argv[i];
     if (arg === '--help' || arg === '-h') args.help = true;
-    else if (arg === '--config' || arg === '-c') args.config = process.argv[++i];
+    else if (arg === '--config' || arg === '-c') {
+      const value = process.argv[i + 1];
+      if (value === undefined) {
+        console.error(`❌ Missing value for ${arg} — expected a path to a config file.`);
+        process.exit(1);
+      }
+      args.config = value;
+      i++;
+    }
   }
   return args;
 }
@@ -61,12 +70,6 @@ Exit codes:
 }
 
 const ICON = { pass: '✅', warn: '⚠️ ', fail: '❌' } as const;
-const CONFIG_PATHS = ['config.yaml', 'config.yml', 'config/config.yaml', '.config.yaml'];
-
-function findConfigFile(): string | null {
-  for (const p of CONFIG_PATHS) if (existsSync(p)) return p;
-  return null;
-}
 
 function render(results: CheckResult[]): void {
   for (const r of results) {
@@ -127,6 +130,10 @@ function main(): void {
   }
 
   // 5. Vector DB key.
+  // NOTE: hardcoded to Pinecone because the config schema currently only allows
+  // `vectordb.provider: 'pinecone'`. When more vector DB providers are added,
+  // this should follow the same provider-registry pattern as embeddings
+  // (select the env var from the configured provider) rather than assuming Pinecone.
   results.push(checkEnvVar('PINECONE_API_KEY', process.env));
 
   render(results);

@@ -14,12 +14,11 @@ import { validateEmbeddingConfig } from './validate-embeddings.js';
 // CONSTANTS
 // =============================================================================
 
-const CONFIG_PATHS = [
-  'config.yaml',
-  'config.yml',
-  'config/config.yaml',
-  '.config.yaml'
-];
+/**
+ * Standard locations searched for a config file, in priority order.
+ * Exported so scripts (e.g. doctor) reuse the same list instead of duplicating it.
+ */
+export const CONFIG_PATHS = ['config.yaml', 'config.yml', 'config/config.yaml', '.config.yaml'];
 
 // =============================================================================
 // ENVIRONMENT VARIABLE SUBSTITUTION
@@ -52,9 +51,10 @@ function substituteEnvVars(content: string): string {
 // =============================================================================
 
 /**
- * Find the configuration file in standard locations
+ * Find the configuration file in standard locations.
+ * Exported so scripts (e.g. doctor) reuse the same lookup logic.
  */
-function findConfigFile(): string | null {
+export function findConfigFile(): string | null {
   for (const configPath of CONFIG_PATHS) {
     if (existsSync(configPath)) {
       return configPath;

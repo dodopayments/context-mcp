@@ -88,8 +88,16 @@ const VectorDbSchema = z.object({
 });
 
 // Embedding settings
+//
+// `EMBEDDING_PROVIDERS` is the single source of truth for which providers are
+// accepted. The Zod enum below and the `EmbeddingProvider` union are both
+// derived from it, so the schema (what config.yaml accepts) and the provider
+// registry in `validate-embeddings.ts` can never drift apart.
+export const EMBEDDING_PROVIDER_IDS = ['openai', 'gemini', 'cohere', 'voyage', 'ollama'] as const;
+export type EmbeddingProvider = (typeof EMBEDDING_PROVIDER_IDS)[number];
+
 const EmbeddingsSchema = z.object({
-  provider: z.enum(['openai', 'gemini']).default('openai'),
+  provider: z.enum(EMBEDDING_PROVIDER_IDS).default('openai'),
   model: z.string().default('text-embedding-3-large'),
   dimensions: z.number().default(3072),
 });
