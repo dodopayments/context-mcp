@@ -47,17 +47,29 @@ export interface EmbeddingRecord {
 // EMBEDDING FUNCTIONS
 // =============================================================================
 
+// Only text-embedding-3+ accept the `dimensions` param; older models (ada-002)
+// reject it with a 400, so it must be omitted for them.
+export function openAISupportsDimensions(model: string): boolean {
+  return model.startsWith('text-embedding-3');
+}
+
 /**
- * Generate embeddings for a batch of texts using OpenAI
+ * Generate embeddings for a batch of texts using OpenAI.
  */
 export async function generateEmbeddingsOpenAI(
   openai: OpenAI,
   texts: string[],
-  model: string
+  model: string,
+  dimensions?: number
 ): Promise<number[][]> {
+  const useDimensions = dimensions !== undefined && openAISupportsDimensions(model);
   return withRetry(() =>
     openai.embeddings
+<<<<<<< HEAD
       .create({ model, input: texts })
+=======
+      .create({ model, input: texts, ...(useDimensions ? { dimensions } : {}) })
+>>>>>>> origin/main
       .then(response => response.data.map(e => e.embedding))
   );
 }
