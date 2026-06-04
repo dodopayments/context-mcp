@@ -65,11 +65,7 @@ export async function generateEmbeddingsOpenAI(
   const useDimensions = dimensions !== undefined && openAISupportsDimensions(model);
   return withRetry(() =>
     openai.embeddings
-<<<<<<< HEAD
-      .create({ model, input: texts })
-=======
       .create({ model, input: texts, ...(useDimensions ? { dimensions } : {}) })
->>>>>>> origin/main
       .then(response => response.data.map(e => e.embedding))
   );
 }
