@@ -105,6 +105,7 @@ type EmbedClient =
       provider: 'openai';
       openai: OpenAI;
       model: string;
+      dimensions: number;
     }
   | {
       provider: 'gemini';
@@ -173,7 +174,12 @@ async function embedAndUpload(
         break;
       case 'openai':
       default:
-        embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model);
+        embeddings = await generateEmbeddingsOpenAI(
+          client.openai,
+          texts,
+          client.model,
+          client.dimensions
+        );
         break;
     }
 
@@ -274,6 +280,7 @@ async function reindex(): Promise<void> {
           provider: 'openai',
           openai: new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }),
           model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
         };
         break;
     }
