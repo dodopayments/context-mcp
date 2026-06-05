@@ -130,10 +130,14 @@ function main(): void {
   }
 
   // 5. Vector DB key.
-  // NOTE: hardcoded to Pinecone because the config schema currently only allows
-  // `vectordb.provider: 'pinecone'`. When more vector DB providers are added,
-  // this should follow the same provider-registry pattern as embeddings
-  // (select the env var from the configured provider) rather than assuming Pinecone.
+  // ┌─────────────────────────────────────────────────────────────────────────┐
+  // │ NOTE (future contributors): this is intentionally hardcoded to Pinecone  │
+  // │ because the config schema currently only allows `vectordb.provider:      │
+  // │ 'pinecone'`, so it cannot check the wrong key today. When additional      │
+  // │ vector DB providers are added (see #28), change this to the same          │
+  // │ provider-registry pattern used for embeddings above — select the env var  │
+  // │ from the configured provider rather than assuming Pinecone.               │
+  // └─────────────────────────────────────────────────────────────────────────┘
   results.push(checkEnvVar('PINECONE_API_KEY', process.env));
 
   render(results);

@@ -9,9 +9,9 @@
 
 import type { ContextMCPConfig, EmbeddingProvider } from './schema.js';
 
-// Re-exported for back-compat with existing importers (e.g. doctor-checks).
-// The canonical definition lives in schema.ts so the Zod enum and this union
-// stay in lockstep.
+// Re-exported here as a convenience so callers (e.g. doctor-checks) can import
+// `EmbeddingProvider` from either this module or schema.js. The canonical
+// definition lives in schema.ts so the Zod enum and this union stay in lockstep.
 export type { EmbeddingProvider };
 
 /**
