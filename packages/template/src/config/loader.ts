@@ -107,11 +107,17 @@ export function loadConfig(customPath?: string): ContextMCPConfig {
   }
 
   // Semantic validation beyond Zod's structural checks: catch embedding
-  // provider/model/dimension mismatches before a reindex starts.
+  // provider/model/dimension mismatches that would produce a failed or corrupt
+  // reindex (wrong-dimension vectors, unknown provider). This runs on *every*
+  // loadConfig() — index, serve, reindex, etc. — by design, since a hard
+  // mismatch is never something a caller wants to proceed past.
+  //
+  // We only surface hard ERRORS here. Soft warnings (e.g. "unknown model" for a
+  // newly-released model the registry doesn't know yet) are intentionally NOT
+  // printed on every startup — they'd be false-positive noise for commands that
+  // don't care. Those warnings are surfaced by the `doctor` / `validate`
+  // commands, which call validateEmbeddingConfig() directly and report both.
   const embeddingCheck = validateEmbeddingConfig(parsed.data.embeddings);
-  for (const warning of embeddingCheck.warnings) {
-    console.warn(`⚠️  ${warning}`);
-  }
   if (embeddingCheck.errors.length > 0) {
     console.error('❌ Embedding configuration is invalid:');
     for (const error of embeddingCheck.errors) {
