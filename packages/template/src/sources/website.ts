@@ -118,6 +118,54 @@ export function urlToFilename(url: string): string {
 }
 
 /**
+ * `urlToFilename` is intentionally lossy: it strips extensions (`/a`, `/a.html`,
+ * `/a.php` all map to `a.html`) and collapses directory-index forms (`/docs/`
+ * and `/docs/index` both map to `docs/index.html`). Distinct pages can therefore
+ * produce the SAME filename. Staging two such pages would silently overwrite the
+ * first on disk AND clobber its `.url-map.json` entry — losing a real page.
+ *
+ * This resolves a desired filename against the set already claimed by OTHER
+ * URLs: the first URL to claim a name keeps it; any later, different URL that
+ * collides gets a deterministic short hash of its full URL spliced before the
+ * `.html` extension. Same URL -> same name (idempotent); different URLs ->
+ * different names (injective). Mirrors the git-source path-collision fix.
+ */
+export function disambiguateFilename(
+  filename: string,
+  url: string,
+  claimedBy: Map<string, string>
+): string {
+  const owner = claimedBy.get(filename);
+  if (owner === undefined || owner === url) {
+    claimedBy.set(filename, url);
+    return filename;
+  }
+  // Collision with a different URL: derive a stable suffix from the full URL.
+  const suffix = shortHash(url);
+  const deduped = filename.replace(/\.html$/i, `-${suffix}.html`);
+  // In the (astronomically unlikely) event the hashed name is also taken by a
+  // different URL, keep extending until unique.
+  let candidate = deduped;
+  let counter = 1;
+  while (claimedBy.has(candidate) && claimedBy.get(candidate) !== url) {
+    candidate = filename.replace(/\.html$/i, `-${suffix}-${counter}.html`);
+    counter++;
+  }
+  claimedBy.set(candidate, url);
+  return candidate;
+}
+
+/** Small, stable, dependency-free hash of a string -> short hex token. */
+function shortHash(input: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
  * Whether a fetch to `url` is permitted given an optional origin restriction.
  * Pure and unit-tested; used to gate both the initial request URL and the
  * final URL after redirects. With no restriction, everything is allowed.
@@ -307,8 +355,11 @@ export async function fetchWebsiteSource(source: SourceConfig): Promise<FetchedS
   // recover the exact source URL (with query string, no synthesized ".html")
   // instead of reconstructing it from the filename — which 404s.
   const urlMap: Record<string, string> = {};
+  // Tracks which URL has claimed each staged filename so two distinct pages that
+  // map to the same lossy filename don't silently overwrite one another.
+  const claimedBy = new Map<string, string>();
   for (const { url, html } of pages) {
-    const filename = urlToFilename(url);
+    const filename = disambiguateFilename(urlToFilename(url), url, claimedBy);
     const filePath = path.join(localPath, filename);
     mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(filePath, html);

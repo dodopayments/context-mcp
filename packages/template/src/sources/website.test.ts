@@ -6,6 +6,7 @@ import {
   isSameOrigin,
   extractLinks,
   urlToFilename,
+  disambiguateFilename,
   isFetchAllowed,
   URL_MAP_FILENAME,
   fetchWebsiteSource,
@@ -100,6 +101,60 @@ describe('urlToFilename', () => {
     const b = urlToFilename('https://x.com/p?id=2');
     expect(a).not.toBe(b);
     expect(a.endsWith('.html')).toBe(true);
+  });
+});
+
+describe('disambiguateFilename (collision-safe staging)', () => {
+  it('lets the first URL keep the plain filename', () => {
+    const claimed = new Map<string, string>();
+    expect(disambiguateFilename('a.html', 'https://x.com/a', claimed)).toBe('a.html');
+  });
+
+  it('is idempotent for the same URL claiming the same name', () => {
+    const claimed = new Map<string, string>();
+    const first = disambiguateFilename('a.html', 'https://x.com/a', claimed);
+    const second = disambiguateFilename('a.html', 'https://x.com/a', claimed);
+    expect(second).toBe(first);
+  });
+
+  it('disambiguates two DISTINCT URLs that map to the same filename', () => {
+    // urlToFilename is lossy: /a and /a.html both -> a.html (extension strip),
+    // and /docs/ and /docs/index both -> docs/index.html (dir-index collapse).
+    const claimed = new Map<string, string>();
+    const f1 = disambiguateFilename(urlToFilename('https://x.com/a'), 'https://x.com/a', claimed);
+    const f2 = disambiguateFilename(
+      urlToFilename('https://x.com/a.html'),
+      'https://x.com/a.html',
+      claimed
+    );
+    expect(f1).not.toBe(f2);
+    expect(f1.endsWith('.html')).toBe(true);
+    expect(f2.endsWith('.html')).toBe(true);
+  });
+
+  it('keeps directory-index vs explicit-index pages distinct', () => {
+    const claimed = new Map<string, string>();
+    const dir = disambiguateFilename(
+      urlToFilename('https://x.com/docs/'),
+      'https://x.com/docs/',
+      claimed
+    );
+    const idx = disambiguateFilename(
+      urlToFilename('https://x.com/docs/index'),
+      'https://x.com/docs/index',
+      claimed
+    );
+    expect(dir).not.toBe(idx);
+  });
+
+  it('does not collide a disambiguated name with an unrelated URL', () => {
+    const claimed = new Map<string, string>();
+    const names = new Set<string>();
+    for (const u of ['https://x.com/p.php', 'https://x.com/p.aspx', 'https://x.com/p.html']) {
+      names.add(disambiguateFilename(urlToFilename(u), u, claimed));
+    }
+    // Three distinct URLs that all map to p.html must stage to three files.
+    expect(names.size).toBe(3);
   });
 });
 
@@ -199,6 +254,63 @@ describe('fetchWebsiteSource URL map sidecar', () => {
     for (const [file, url] of Object.entries(map)) {
       expect(file.endsWith('.html')).toBe(true);
       expect(url.startsWith(origin)).toBe(true);
+    }
+
+    result.cleanup();
+  });
+
+  it('stages every page when distinct sitemap URLs map to the same filename', async () => {
+    // Regression: /docs/ and /docs/index are DISTINCT pages but urlToFilename
+    // maps both to docs/index.html. Before the collision-safe staging fix the
+    // second silently overwrote the first on disk and in .url-map.json, so the
+    // crawler reported 2 pages downloaded but only 1 survived.
+    const origin = 'https://docs.example.com';
+    const page = (h: string) =>
+      `<html><head><title>${h}</title></head><body><main><h2>${h}</h2>` +
+      `<p>This is a sufficiently long paragraph of documentation text for ${h} so ` +
+      `that the chunker and staging pipeline have real content to work with.</p>` +
+      `</main></body></html>`;
+
+    const sitemap = `<?xml version="1.0"?><urlset>
+      <url><loc>${origin}/docs/</loc></url>
+      <url><loc>${origin}/docs/index</loc></url>
+    </urlset>`;
+
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.endsWith('/sitemap.xml')) return xmlResponse(sitemap);
+      if (url.endsWith('/docs/')) return htmlResponse(page('Dir'));
+      if (url.endsWith('/docs/index')) return htmlResponse(page('Explicit'));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const source = {
+      name: 'collide',
+      type: 'website',
+      parser: 'html',
+      url: `${origin}/`,
+      maxPages: 10,
+      crawlDepth: 0,
+    } as SourceConfig;
+
+    const result = await fetchWebsiteSource(source);
+    staged = result.localPath;
+
+    const map = JSON.parse(
+      fs.readFileSync(path.join(result.localPath, URL_MAP_FILENAME), 'utf-8')
+    ) as Record<string, string>;
+
+    // Both distinct pages must survive: 2 map entries, 2 distinct staged files,
+    // and both real URLs preserved.
+    const urls = Object.values(map);
+    expect(urls).toContain(`${origin}/docs/`);
+    expect(urls).toContain(`${origin}/docs/index`);
+    expect(Object.keys(map)).toHaveLength(2);
+    expect(new Set(Object.keys(map)).size).toBe(2);
+
+    // And the files actually exist on disk (no overwrite).
+    for (const file of Object.keys(map)) {
+      expect(fs.existsSync(path.join(result.localPath, file))).toBe(true);
     }
 
     result.cleanup();
