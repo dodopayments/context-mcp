@@ -139,6 +139,29 @@ export function buildGitCloneUrl(
 }
 
 // =============================================================================
+// LOCAL CLONE DIRECTORY
+// =============================================================================
+
+/**
+ * Resolve the local clone directory for a repository.
+ *
+ * The directory is derived from the **full** repository path (sanitized), not
+ * just the last segment, so two sources whose paths share a final segment —
+ * e.g. `team-a/docs` vs `team-b/docs`, or GitLab subgroups `group/sub1/docs`
+ * vs `group/sub2/docs` — resolve to distinct directories. Deriving from the
+ * last segment alone caused a silent collision: the second source would reuse
+ * the first's clone (via the fetch + `reset --hard` reuse path) and index the
+ * wrong repository's content with no error.
+ *
+ * Non-`[a-zA-Z0-9._-]` characters (notably the `/` separators) are replaced
+ * with `-` so the result is a single safe path segment under TEMP_DIR.
+ */
+export function localCloneDir(spec: GitProviderSpec, repository: string): string {
+  const repoSlug = repository.replace(/[^a-zA-Z0-9._-]/g, '-');
+  return path.join(TEMP_DIR, `${spec.localDirPrefix}${repoSlug}`);
+}
+
+// =============================================================================
 // TOKEN SCRUBBING
 // =============================================================================
 
@@ -238,9 +261,10 @@ export async function fetchGitSource(
   const branch = source.branch || 'main';
   validateGitInput(spec, host, source.repository, branch);
 
-  // Repos can be nested (GitLab subgroups), so use the last path segment.
-  const repoName = source.repository.split('/').pop()!;
-  const localPath = path.join(TEMP_DIR, `${spec.localDirPrefix}${repoName}`);
+  // Derive the clone dir from the full repo path so repos sharing a last
+  // segment (e.g. team-a/docs vs team-b/docs, or GitLab subgroups) don't
+  // collide and silently serve each other's content.
+  const localPath = localCloneDir(spec, source.repository);
 
   mkdirSync(TEMP_DIR, { recursive: true });
 
