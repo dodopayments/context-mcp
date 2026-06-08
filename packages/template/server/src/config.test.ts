@@ -44,4 +44,14 @@ describe('loadServerConfig', () => {
     const config = loadServerConfig({ ...minimalEnv, PORT: 'not-a-number' });
     expect(config.port).toBe(8787);
   });
+
+  it('throws on an out-of-range PORT instead of crashing in listen()', () => {
+    expect(() => loadServerConfig({ ...minimalEnv, PORT: '99999' })).toThrow(/Invalid PORT/);
+    expect(() => loadServerConfig({ ...minimalEnv, PORT: '-1' })).toThrow(/Invalid PORT/);
+    expect(() => loadServerConfig({ ...minimalEnv, PORT: '70000' })).toThrow(/Invalid PORT/);
+  });
+
+  it('still allows port 0 (OS-assigned ephemeral)', () => {
+    expect(loadServerConfig({ ...minimalEnv, PORT: '0' }).port).toBe(0);
+  });
 });

@@ -46,8 +46,16 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
+  // Validate PORT range up front so an out-of-range value fails with a clear
+  // config error instead of a RangeError thrown deep inside server.listen().
+  // Port 0 is allowed (OS-assigned ephemeral port).
+  const port = int(env.PORT, 8787);
+  if (port < 0 || port > 65535) {
+    throw new Error(`Invalid PORT: ${env.PORT} (must be between 0 and 65535)`);
+  }
+
   return {
-    port: int(env.PORT, 8787),
+    port,
     serverName: env.SERVER_NAME || 'contextmcp',
     serverDescription: env.SERVER_DESCRIPTION || 'Search documentation',
     pineconeApiKey: pineconeApiKey!,

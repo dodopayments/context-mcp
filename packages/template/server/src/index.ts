@@ -86,6 +86,37 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+/**
+ * Validate and normalize a /search request body. Throws BadRequestError (→ 400)
+ * for any client mistake, keeping the REST contract identical to the zod-checked
+ * MCP tool: `query` must be a non-empty string; `limit`, if present, must be an
+ * integer in [1, maxTopK].
+ */
+function parseSearchBody(body: unknown, maxTopK: number): { query: string; limit?: number } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new BadRequestError('Request body must be a JSON object');
+  }
+  const { query, limit } = body as { query?: unknown; limit?: unknown };
+
+  if (typeof query !== 'string') {
+    throw new BadRequestError('"query" must be a string');
+  }
+  if (query.trim().length === 0) {
+    throw new BadRequestError('"query" must not be empty');
+  }
+
+  if (limit === undefined || limit === null) {
+    return { query };
+  }
+  if (typeof limit !== 'number' || !Number.isFinite(limit) || !Number.isInteger(limit)) {
+    throw new BadRequestError('"limit" must be an integer');
+  }
+  if (limit < 1 || limit > maxTopK) {
+    throw new BadRequestError(`"limit" must be between 1 and ${maxTopK}`);
+  }
+  return { query, limit };
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -134,13 +165,13 @@ async function handleRequest(
 
   // REST search endpoint.
   if (url.pathname === '/search' && req.method === 'POST') {
-    const body = (await readJsonBody(req)) as { query?: string; limit?: number } | undefined;
-    if (!body?.query) {
-      sendJson(res, 400, { error: 'Missing "query" in request body' });
-      return;
-    }
-    const results = await searchDocs(pinecone, config, body.query, body.limit);
-    sendJson(res, 200, { query: body.query, count: results.length, results });
+    const body = await readJsonBody(req);
+    // Validate request shape at the boundary so wrong types become a clean 400
+    // instead of a 500 (or NaN topK forwarded to Pinecone). This mirrors the
+    // zod schema enforced on the MCP tool path.
+    const { query, limit } = parseSearchBody(body, config.maxTopK);
+    const results = await searchDocs(pinecone, config, query, limit);
+    sendJson(res, 200, { query, count: results.length, results });
     return;
   }
 

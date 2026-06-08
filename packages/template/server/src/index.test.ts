@@ -68,6 +68,61 @@ describe('server request validation', () => {
     expect(res.status).toBe(413);
   });
 
+  it('POST /search with a non-string query returns 400 (not 500)', async () => {
+    for (const query of [123, true, { evil: true }, ['a', 'b'], null]) {
+      const res = await fetch(`${base}/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      expect(res.status, `query=${JSON.stringify(query)}`).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/query/i);
+    }
+  });
+
+  it('POST /search with a whitespace-only query returns 400', async () => {
+    const res = await fetch(`${base}/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: '   ' }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/query/i);
+  });
+
+  it('POST /search with a non-numeric limit returns 400 (no NaN topK to backend)', async () => {
+    const res = await fetch(`${base}/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'hi', limit: 'abc' }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/limit/i);
+  });
+
+  it('POST /search with an out-of-range limit returns 400', async () => {
+    for (const limit of [0, -5, 999999, 1.5]) {
+      const res = await fetch(`${base}/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'hi', limit }),
+      });
+      expect(res.status, `limit=${limit}`).toBe(400);
+    }
+  });
+
+  it('POST /search with a non-object body returns 400', async () => {
+    const res = await fetch(`${base}/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify('just a string'),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('unknown route returns 404', async () => {
     const res = await fetch(`${base}/nope`);
     expect(res.status).toBe(404);
