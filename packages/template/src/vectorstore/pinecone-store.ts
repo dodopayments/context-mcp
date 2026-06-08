@@ -119,8 +119,35 @@ export class PineconeStore implements VectorStore {
   async stats(): Promise<VectorStoreStats> {
     const stats = await this.index().describeIndexStats();
     return {
-      vectorCount: stats.totalRecordCount || 0,
+      // Scope the count to the configured namespace so this matches
+      // QdrantStore.stats(), which reports only the namespace's vectors. The
+      // SDK exposes per-namespace counts under `namespaces[name].recordCount`;
+      // fall back to the whole-index total only when that map is absent.
+      vectorCount: this.namespacedVectorCount(stats),
       dimension: stats.dimension,
     };
+  }
+
+  /**
+   * Resolve the vector count for `this.namespace` from a describeIndexStats
+   * response. The Pinecone SDK reports counts per namespace; using the
+   * whole-index `totalRecordCount` would over-report whenever other namespaces
+   * share the index (and break parity with QdrantStore).
+   */
+  private namespacedVectorCount(stats: {
+    totalRecordCount?: number;
+    namespaces?: Record<string, { recordCount?: number } | undefined>;
+  }): number {
+    const summary = stats.namespaces?.[this.namespace];
+    if (summary && typeof summary.recordCount === 'number') {
+      return summary.recordCount;
+    }
+    // No per-namespace entry: an unconfigured/empty namespace with no vectors,
+    // or an SDK response without the namespaces map. When a specific namespace
+    // is configured but missing from the map, it holds zero vectors.
+    if (stats.namespaces && this.namespace) {
+      return 0;
+    }
+    return stats.totalRecordCount || 0;
   }
 }
