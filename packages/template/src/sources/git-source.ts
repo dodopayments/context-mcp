@@ -157,16 +157,28 @@ export function buildGitCloneUrl(
  * The dir name is `<prefix><sanitized-slug>-<hash>`:
  *  - the slug keeps the dir human-readable (non-`[a-zA-Z0-9._-]` chars, notably
  *    the `/` separators, replaced with `-`), and
- *  - the hash is a short digest of the *raw* repository path, which guarantees
- *    distinct repositories map to distinct dirs even when their slugs collide.
+ *  - the hash is a short digest of the *raw* `host` + repository path, which
+ *    guarantees distinct repositories map to distinct dirs even when their slugs
+ *    collide.
  *
  * The hash matters because sanitizing alone is not injective: `/` and `-` both
  * become `-`, so without it `team-a/docs` and `team/a-docs` (two different
  * repos) would still share a directory and reintroduce the silent-collision bug.
+ *
+ * The **host** is hashed alongside the repository because the same repo path can
+ * live on different hosts — most importantly two different self-hosted GitLab
+ * instances (`gitlab.company-a.com` vs `gitlab.company-b.com`) both serving
+ * `docs/api`. Without the host in the key those two sources would share a clone
+ * dir, and the second would silently reuse the first instance's checkout (via
+ * the fetch + `reset --hard` reuse path, whose `origin` still points at the
+ * first host) — the same silent-collision class as the slug/last-segment bugs.
+ * `host` and `repository` are joined with a newline, which can appear in
+ * neither (`HOST_RE` / `REPOSITORY_RE` allowlists), so the hashed input stays
+ * injective and no host/repository boundary ambiguity can manufacture a collision.
  */
-export function localCloneDir(spec: GitProviderSpec, repository: string): string {
+export function localCloneDir(spec: GitProviderSpec, host: string, repository: string): string {
   const slug = repository.replace(/[^a-zA-Z0-9._-]/g, '-');
-  const hash = createHash('sha256').update(repository).digest('hex').slice(0, 8);
+  const hash = createHash('sha256').update(`${host}\n${repository}`).digest('hex').slice(0, 8);
   return path.join(TEMP_DIR, `${spec.localDirPrefix}${slug}-${hash}`);
 }
 
@@ -273,7 +285,7 @@ export async function fetchGitSource(
   // Derive the clone dir from the full repo path so repos sharing a last
   // segment (e.g. team-a/docs vs team-b/docs, or GitLab subgroups) don't
   // collide and silently serve each other's content.
-  const localPath = localCloneDir(spec, source.repository);
+  const localPath = localCloneDir(spec, host, source.repository);
 
   mkdirSync(TEMP_DIR, { recursive: true });
 
