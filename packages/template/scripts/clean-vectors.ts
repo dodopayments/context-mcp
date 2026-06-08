@@ -16,7 +16,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { clearPineconeIndex, initPineconeIndex, getPineconeStats } from '../src/embeddings/core.js';
 import { loadConfig } from '../src/config/loader.js';
-import { parseCleanArgs, resolveDeletion } from '../src/config/clean-vectors-cli.js';
+import { parseCleanArgs, resolveDeletion, isAbortError } from '../src/config/clean-vectors-cli.js';
 
 function parseArgs() {
   return parseCleanArgs(process.argv.slice(2));
@@ -68,6 +68,16 @@ async function confirmDeletion(indexName: string, vectorCount: number): Promise<
   try {
     const answer = await rl.question(`Type the index name "${indexName}" to confirm deletion: `);
     return resolveDeletion({ force: false, isTTY: true, indexName, answer }).proceed;
+  } catch (err) {
+    // Ctrl+C (SIGINT) and Ctrl+D (EOF) make readline reject the question with
+    // an AbortError. That's a deliberate abort by the user, not a crash, so
+    // swallow it and treat it as "not confirmed" — main() then prints the
+    // friendly "Aborted. No vectors were deleted." message and exits 1,
+    // instead of bubbling an ugly AbortError stack trace through main().catch.
+    if (isAbortError(err)) {
+      return false;
+    }
+    throw err;
   } finally {
     rl.close();
   }

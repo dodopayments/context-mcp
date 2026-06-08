@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCleanArgs, resolveDeletion } from './clean-vectors-cli.js';
+import { parseCleanArgs, resolveDeletion, isAbortError } from './clean-vectors-cli.js';
 
 describe('parseCleanArgs', () => {
   it('defaults to no flags', () => {
@@ -85,5 +85,47 @@ describe('resolveDeletion', () => {
   it('is case-sensitive (does not proceed on case mismatch)', () => {
     const d = resolveDeletion({ force: false, isTTY: true, indexName: 'docs', answer: 'DOCS' });
     expect(d.proceed).toBe(false);
+  });
+});
+
+describe('isAbortError', () => {
+  it('detects the AbortError raised by readline on Ctrl+C / Ctrl+D', () => {
+    // node:readline/promises rejects rl.question() with this shape on SIGINT/EOF.
+    const err = new Error('The operation was aborted');
+    err.name = 'AbortError';
+    (err as { code?: string }).code = 'ABORT_ERR';
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  it('detects by name even when code is absent', () => {
+    const err = new Error('aborted');
+    err.name = 'AbortError';
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  it('detects by code even when name differs', () => {
+    const err = new Error('aborted');
+    (err as { code?: string }).code = 'ABORT_ERR';
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  it('matches the real DOMException-style AbortError thrown via AbortController', () => {
+    const ac = new AbortController();
+    ac.abort();
+    expect(ac.signal.reason).toBeInstanceOf(Error);
+    expect(isAbortError(ac.signal.reason)).toBe(true);
+  });
+
+  it('does not treat ordinary errors as aborts', () => {
+    expect(isAbortError(new Error('connection refused'))).toBe(false);
+    const typeErr = new TypeError('bad');
+    expect(isAbortError(typeErr)).toBe(false);
+  });
+
+  it('is safe for non-Error values', () => {
+    expect(isAbortError(undefined)).toBe(false);
+    expect(isAbortError(null)).toBe(false);
+    expect(isAbortError('AbortError')).toBe(false);
+    expect(isAbortError({ name: 'AbortError', code: 'ABORT_ERR' })).toBe(false);
   });
 });

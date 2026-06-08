@@ -69,3 +69,17 @@ export function resolveDeletion(ctx: DeletionContext): DeletionDecision {
   }
   return { proceed: false, reason: 'mismatch' };
 }
+
+/**
+ * True for the AbortError that `node:readline/promises` raises when the user
+ * cancels a `rl.question()` with Ctrl+C (SIGINT) or Ctrl+D (EOF).
+ *
+ * Both cancellations reject the question promise with an `AbortError`
+ * (`code === 'ABORT_ERR'`). The clean-vectors script uses this to treat that
+ * rejection as a deliberate user abort — print the friendly "Aborted" message
+ * and exit 1 — instead of letting it bubble up as an ugly fatal stack trace.
+ */
+export function isAbortError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.name === 'AbortError' || (err as { code?: unknown }).code === 'ABORT_ERR';
+}
