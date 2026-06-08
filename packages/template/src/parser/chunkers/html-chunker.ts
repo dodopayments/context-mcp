@@ -161,33 +161,53 @@ export function parseHTMLSource(
 
   for (const file of files) {
     const fullPath = path.join(rootDir, file);
-    let html: string;
+    // Process each file defensively: a single malformed/hostile document
+    // (e.g. pathologically deep nesting that overflows the HTML parser's
+    // recursive innerHTML walk, or any conversion error) must NOT abort the
+    // whole source and silently drop chunks from every other good file.
     try {
-      html = fs.readFileSync(fullPath, 'utf-8');
-    } catch {
+      const html = fs.readFileSync(fullPath, 'utf-8');
+
+      const { markdown } = htmlToMarkdown(html);
+      if (!markdown.trim()) continue;
+
+      // Map the .html file to a clean .html URL on the docs site.
+      const sourceUrl = source.baseUrl ? `${source.baseUrl.replace(/\/$/, '')}/${file}` : '';
+
+      const dirName = path.dirname(file);
+      const fileContextName =
+        dirName !== '.' ? `${contextName}/${path.basename(dirName)}` : contextName;
+
+      const chunks = parseMarkdownFile(
+        markdown,
+        sourceUrl,
+        fileContextName,
+        // Use a .md filename so the markdown chunker treats it as generic docs.
+        file.replace(/\.html?$/i, '.md'),
+        language,
+        chunkConfig
+      );
+
+      // The markdown chunker derives ids/paths from contextName only (e.g.
+      // "<ctx>/readme#0"), so fanning every .html file through it produces
+      // COLLIDING ids across pages. Records are upserted keyed by id, so
+      // colliding chunks silently overwrite each other -> data loss. Namespace
+      // each chunk by its real source file to guarantee uniqueness.
+      const fileKey = file.replace(/\\/g, '/');
+      for (const chunk of chunks) {
+        chunk.id = `${contextName}/${fileKey}#${chunk.id.split('#').pop()}`;
+        chunk.documentPath = `${contextName}/${fileKey}`;
+      }
+
+      allChunks.push(...chunks);
+    } catch (err) {
+      // Skip the offending file but keep going so the rest of the source is
+      // still indexed. RangeError here is typically a stack overflow from
+      // deeply-nested markup inside node-html-parser.
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[html-chunker] Skipping ${file}: ${reason}`);
       continue;
     }
-
-    const { markdown } = htmlToMarkdown(html);
-    if (!markdown.trim()) continue;
-
-    // Map the .html file to a clean .html URL on the docs site.
-    const sourceUrl = source.baseUrl ? `${source.baseUrl.replace(/\/$/, '')}/${file}` : '';
-
-    const dirName = path.dirname(file);
-    const fileContextName =
-      dirName !== '.' ? `${contextName}/${path.basename(dirName)}` : contextName;
-
-    const chunks = parseMarkdownFile(
-      markdown,
-      sourceUrl,
-      fileContextName,
-      // Use a .md filename so the markdown chunker treats it as generic docs.
-      file.replace(/\.html?$/i, '.md'),
-      language,
-      chunkConfig
-    );
-    allChunks.push(...chunks);
   }
 
   return allChunks;
