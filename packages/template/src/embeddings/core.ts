@@ -410,7 +410,13 @@ export async function withRetry<T>(
       ? { maxAttempts: optionsOrMaxAttempts, baseDelayMs: baseDelayMsArg }
       : optionsOrMaxAttempts;
 
-  const maxAttempts = options.maxAttempts ?? 5;
+  // Sanitise maxAttempts: a non-positive / non-finite value (e.g. 0, -1, NaN
+  // from bad config or an unparsed env var) must never short-circuit the loop
+  // and throw a bogus "exhausted attempts" without ever running the operation.
+  // Always make at least one attempt.
+  const rawMaxAttempts = options.maxAttempts ?? 5;
+  const maxAttempts =
+    Number.isFinite(rawMaxAttempts) && rawMaxAttempts >= 1 ? Math.floor(rawMaxAttempts) : 1;
   const baseDelayMs = options.baseDelayMs ?? 2000;
   const maxDelayMs = options.maxDelayMs ?? 60000;
   const shouldRetry = options.shouldRetry ?? isRetryableError;
@@ -423,9 +429,14 @@ export async function withRetry<T>(
       if (!shouldRetry(err) || attempt === maxAttempts) throw err;
 
       // Prefer server-provided Retry-After, else exponential backoff with jitter.
+      // Either way the delay is clamped to maxDelayMs: a hostile or buggy server
+      // can legally send `Retry-After: 86400` (24h), and we must not hang the
+      // whole indexing run on it.
       const backoff = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
       const jitter = Math.floor(Math.random() * Math.min(1000, backoff));
-      const delay = retryAfterMs(err) ?? backoff + jitter;
+      const serverDelay = retryAfterMs(err);
+      const delay =
+        serverDelay !== undefined ? Math.min(serverDelay, maxDelayMs) : backoff + jitter;
 
       const reason = getErrorStatus(err) ?? getErrorCode(err) ?? 'error';
       console.log(

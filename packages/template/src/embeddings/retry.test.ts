@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { isRetryableError, withRetry, retryAfterMs } from './core.js';
 
 describe('isRetryableError', () => {
@@ -116,6 +116,58 @@ describe('withRetry', () => {
       )
     ).rejects.toMatchObject({ status: 503 });
     expect(calls).toBe(2);
+  });
+
+  it('makes exactly one attempt when maxAttempts is non-positive/non-finite (does not throw a bogus exhausted error)', async () => {
+    // Adversarial config: 0, negative, or NaN (e.g. an unparsed env var) must
+    // never short-circuit the loop and throw without ever running the op.
+    for (const maxAttempts of [0, -1, NaN]) {
+      let calls = 0;
+      const result = await withRetry(
+        async () => {
+          calls++;
+          return 'ok';
+        },
+        { maxAttempts, baseDelayMs: 1 }
+      );
+      expect(result).toBe('ok');
+      expect(calls).toBe(1);
+    }
+  });
+
+  it('clamps an absurd Retry-After to maxDelayMs (does not hang for hours)', async () => {
+    // A server can legally send Retry-After: 86400 (24h). The retry must be
+    // capped so a hostile/buggy server cannot stall the whole run.
+    const realSetTimeout = globalThis.setTimeout;
+    let capturedDelay: number | null = null;
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      fn: () => void,
+      ms?: number,
+      ...rest: unknown[]
+    ) => {
+      if (capturedDelay === null && (ms ?? 0) > 1000) {
+        capturedDelay = ms ?? 0;
+        // Fire immediately so the test doesn't actually wait.
+        return realSetTimeout(fn, 0, ...(rest as []));
+      }
+      return realSetTimeout(fn, ms, ...(rest as []));
+    }) as unknown as typeof setTimeout);
+
+    let calls = 0;
+    const result = await withRetry(
+      async () => {
+        calls++;
+        if (calls < 2) throw { status: 429, headers: { 'retry-after': '86400' } };
+        return 'ok';
+      },
+      { maxAttempts: 3, baseDelayMs: 10, maxDelayMs: 60000 }
+    );
+    spy.mockRestore();
+
+    expect(result).toBe('ok');
+    expect(capturedDelay).not.toBeNull();
+    // 86400s (=86_400_000ms) requested by the server, but clamped to maxDelayMs.
+    expect(capturedDelay!).toBeLessThanOrEqual(60000);
   });
 
   it('honours a custom shouldRetry predicate', async () => {
