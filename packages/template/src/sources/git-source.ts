@@ -23,6 +23,7 @@
 
 import { execFileSync } from 'child_process';
 import { existsSync, rmSync, mkdirSync } from 'fs';
+import { createHash } from 'crypto';
 import * as path from 'path';
 import { SourceConfig } from '../config/schema.js';
 
@@ -145,20 +146,28 @@ export function buildGitCloneUrl(
 /**
  * Resolve the local clone directory for a repository.
  *
- * The directory is derived from the **full** repository path (sanitized), not
- * just the last segment, so two sources whose paths share a final segment —
- * e.g. `team-a/docs` vs `team-b/docs`, or GitLab subgroups `group/sub1/docs`
- * vs `group/sub2/docs` — resolve to distinct directories. Deriving from the
- * last segment alone caused a silent collision: the second source would reuse
- * the first's clone (via the fetch + `reset --hard` reuse path) and index the
+ * The directory is derived from the **full** repository path, not just the
+ * last segment, so two sources whose paths share a final segment — e.g.
+ * `team-a/docs` vs `team-b/docs`, or GitLab subgroups `group/sub1/docs` vs
+ * `group/sub2/docs` — resolve to distinct directories. Deriving from the last
+ * segment alone caused a silent collision: the second source would reuse the
+ * first's clone (via the fetch + `reset --hard` reuse path) and index the
  * wrong repository's content with no error.
  *
- * Non-`[a-zA-Z0-9._-]` characters (notably the `/` separators) are replaced
- * with `-` so the result is a single safe path segment under TEMP_DIR.
+ * The dir name is `<prefix><sanitized-slug>-<hash>`:
+ *  - the slug keeps the dir human-readable (non-`[a-zA-Z0-9._-]` chars, notably
+ *    the `/` separators, replaced with `-`), and
+ *  - the hash is a short digest of the *raw* repository path, which guarantees
+ *    distinct repositories map to distinct dirs even when their slugs collide.
+ *
+ * The hash matters because sanitizing alone is not injective: `/` and `-` both
+ * become `-`, so without it `team-a/docs` and `team/a-docs` (two different
+ * repos) would still share a directory and reintroduce the silent-collision bug.
  */
 export function localCloneDir(spec: GitProviderSpec, repository: string): string {
-  const repoSlug = repository.replace(/[^a-zA-Z0-9._-]/g, '-');
-  return path.join(TEMP_DIR, `${spec.localDirPrefix}${repoSlug}`);
+  const slug = repository.replace(/[^a-zA-Z0-9._-]/g, '-');
+  const hash = createHash('sha256').update(repository).digest('hex').slice(0, 8);
+  return path.join(TEMP_DIR, `${spec.localDirPrefix}${slug}-${hash}`);
 }
 
 // =============================================================================

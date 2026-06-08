@@ -21,10 +21,25 @@ const GITLAB_SPEC: GitProviderSpec = {
 const TEMP_DIR = path.join(process.cwd(), '.temp-repos');
 
 describe('localCloneDir', () => {
-  it('places the clone under .temp-repos with the provider prefix', () => {
-    expect(localCloneDir(GITHUB_SPEC, 'owner/repo')).toBe(path.join(TEMP_DIR, 'owner-repo'));
-    expect(localCloneDir(GITLAB_SPEC, 'group/project')).toBe(
-      path.join(TEMP_DIR, 'gitlab-group-project')
+  it('places the clone directly under .temp-repos as a single path segment', () => {
+    const dir = localCloneDir(GITLAB_SPEC, 'group/sub/project');
+    expect(path.dirname(dir)).toBe(TEMP_DIR);
+    // No stray separators: the whole repo path collapses into one dir name.
+    expect(path.basename(dir)).toBe(dir.slice(TEMP_DIR.length + 1));
+  });
+
+  it('keeps a human-readable, provider-prefixed slug in the dir name', () => {
+    expect(path.basename(localCloneDir(GITHUB_SPEC, 'owner/repo'))).toMatch(
+      /^owner-repo-[0-9a-f]+$/
+    );
+    expect(path.basename(localCloneDir(GITLAB_SPEC, 'group/project'))).toMatch(
+      /^gitlab-group-project-[0-9a-f]+$/
+    );
+  });
+
+  it('is deterministic for the same repository', () => {
+    expect(localCloneDir(GITLAB_SPEC, 'group/sub/project')).toBe(
+      localCloneDir(GITLAB_SPEC, 'group/sub/project')
     );
   });
 
@@ -32,34 +47,36 @@ describe('localCloneDir', () => {
     // Regression test for the silent-collision bug: deriving the clone dir from
     // only the last path segment made these map to the same directory, so the
     // second source reused the first's checkout and indexed the wrong content.
-    const a = localCloneDir(GITLAB_SPEC, 'team-a/docs');
-    const b = localCloneDir(GITLAB_SPEC, 'team-b/docs');
-    expect(a).not.toBe(b);
+    expect(localCloneDir(GITLAB_SPEC, 'team-a/docs')).not.toBe(
+      localCloneDir(GITLAB_SPEC, 'team-b/docs')
+    );
   });
 
   it('derives distinct dirs for GitLab subgroups sharing a project name', () => {
-    const sub1 = localCloneDir(GITLAB_SPEC, 'group/sub1/docs');
-    const sub2 = localCloneDir(GITLAB_SPEC, 'group/sub2/docs');
-    expect(sub1).not.toBe(sub2);
-    expect(sub1).toBe(path.join(TEMP_DIR, 'gitlab-group-sub1-docs'));
-    expect(sub2).toBe(path.join(TEMP_DIR, 'gitlab-group-sub2-docs'));
+    expect(localCloneDir(GITLAB_SPEC, 'group/sub1/docs')).not.toBe(
+      localCloneDir(GITLAB_SPEC, 'group/sub2/docs')
+    );
+  });
+
+  it('derives distinct dirs when slugs collide via separator ambiguity', () => {
+    // `/` and `-` both sanitize to `-`, so these two *different* repos produce
+    // the same readable slug. The hash suffix must still keep them distinct,
+    // otherwise the silent-collision bug returns through the back door.
+    expect(localCloneDir(GITLAB_SPEC, 'team-a/docs')).not.toBe(
+      localCloneDir(GITLAB_SPEC, 'team/a-docs')
+    );
+    expect(localCloneDir(GITLAB_SPEC, 'a-b/c')).not.toBe(localCloneDir(GITLAB_SPEC, 'a/b-c'));
   });
 
   it('also fixes the collision for GitHub sources', () => {
-    const a = localCloneDir(GITHUB_SPEC, 'team-a/docs');
-    const b = localCloneDir(GITHUB_SPEC, 'team-b/docs');
-    expect(a).not.toBe(b);
+    expect(localCloneDir(GITHUB_SPEC, 'team-a/docs')).not.toBe(
+      localCloneDir(GITHUB_SPEC, 'team-b/docs')
+    );
   });
 
   it('keeps GitHub and GitLab clones separate even for identical repo paths', () => {
     expect(localCloneDir(GITHUB_SPEC, 'group/project')).not.toBe(
       localCloneDir(GITLAB_SPEC, 'group/project')
     );
-  });
-
-  it('produces a single safe path segment (no stray separators) under TEMP_DIR', () => {
-    const dir = localCloneDir(GITLAB_SPEC, 'group/sub/project');
-    expect(path.dirname(dir)).toBe(TEMP_DIR);
-    expect(path.basename(dir)).toBe('gitlab-group-sub-project');
   });
 });
