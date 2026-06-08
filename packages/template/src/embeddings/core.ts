@@ -54,6 +54,52 @@ export function openAISupportsDimensions(model: string): boolean {
 }
 
 /**
+ * Guard against a provider returning a different number of embeddings than the
+ * number of inputs. The reindex pipeline maps `embeddings[idx]` onto the chunk
+ * at the same position, so a length mismatch silently assigns `undefined`
+ * (or the wrong) vectors to documents and corrupts the index. Fail loud instead.
+ */
+export function assertEmbeddingCount(label: string, embeddings: unknown[], expected: number): void {
+  if (embeddings.length !== expected) {
+    throw new Error(`${label}: expected ${expected} embeddings but received ${embeddings.length}`);
+  }
+  for (let i = 0; i < embeddings.length; i++) {
+    const v = embeddings[i];
+    if (!Array.isArray(v) || v.length === 0) {
+      throw new Error(`${label}: embedding at index ${i} is missing or empty`);
+    }
+  }
+}
+
+/**
+ * Some providers (e.g. Voyage) return results with an explicit `index` and do
+ * not guarantee input order. Reassemble into input order so each embedding is
+ * matched to the correct document. Falls back to response order if indexes are
+ * absent.
+ */
+export function reorderByIndex(
+  label: string,
+  items: { embedding: number[]; index?: number }[],
+  expected: number
+): number[][] {
+  const hasIndexes = items.some(it => typeof it.index === 'number');
+  if (!hasIndexes) return items.map(it => it.embedding);
+
+  const out: number[][] = new Array(expected);
+  for (const it of items) {
+    const idx = it.index;
+    if (typeof idx !== 'number' || idx < 0 || idx >= expected) {
+      throw new Error(`${label}: response index ${String(idx)} is out of range`);
+    }
+    if (out[idx] !== undefined) {
+      throw new Error(`${label}: duplicate response index ${idx}`);
+    }
+    out[idx] = it.embedding;
+  }
+  return out;
+}
+
+/**
  * Generate embeddings for a batch of texts using OpenAI.
  */
 export async function generateEmbeddingsOpenAI(
@@ -133,6 +179,7 @@ export async function generateEmbeddingsCohere(
       const data = (await res.json()) as { embeddings?: { float?: number[][] } };
       const out = data.embeddings?.float;
       if (!out) throw new Error('Cohere embed: unexpected response shape (no embeddings.float)');
+      assertEmbeddingCount('Cohere embed', out, texts.length);
       return out;
     },
     { label: 'Cohere embed' }
@@ -174,9 +221,13 @@ export async function generateEmbeddingsVoyage(
           headers: res.headers,
         });
       }
-      const data = (await res.json()) as { data?: { embedding: number[] }[] };
+      const data = (await res.json()) as {
+        data?: { embedding: number[]; index?: number }[];
+      };
       if (!data.data) throw new Error('Voyage embed: unexpected response shape (no data)');
-      return data.data.map(d => d.embedding);
+      const out = reorderByIndex('Voyage embed', data.data, texts.length);
+      assertEmbeddingCount('Voyage embed', out, texts.length);
+      return out;
     },
     { label: 'Voyage embed' }
   );
@@ -213,6 +264,7 @@ export async function generateEmbeddingsOllama(
       if (!data.embeddings) {
         throw new Error('Ollama embed: unexpected response shape (no embeddings)');
       }
+      assertEmbeddingCount('Ollama embed', data.embeddings, texts.length);
       return data.embeddings;
     },
     { label: 'Ollama embed' }
