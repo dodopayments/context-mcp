@@ -9,6 +9,8 @@ import {
   toVectorId,
   loadManifest,
   saveManifest,
+  findVectorIdCollisions,
+  assertNoVectorIdCollisions,
   MANIFEST_VERSION,
   type ReindexManifest,
 } from './manifest.js';
@@ -140,6 +142,81 @@ describe('toVectorId', () => {
     expect(toVectorId('api-reference/payments#0')).toBe('api-reference_payments_0');
   });
 });
+
+// Regression: the manifest keys by raw chunk.id while the store keys by
+// toVectorId(chunk.id). Two distinct ids ("a/b#0" and "a_b#0") sanitize to the
+// SAME vector id ("a_b_0"). Without guarding this:
+//   (1) the store silently keeps only one of two distinct chunks, and
+//   (2) the incremental delete path deletes a vector that is STILL live under
+//       the colliding id -> permanent, silent data loss.
+describe('vector-id collisions (silent-data-loss guard)', () => {
+  it('detects two distinct chunk ids that sanitize to the same vector id', () => {
+    const collisions = findVectorIdCollisions([chunk('a/b#0', 'one'), chunk('a_b#0', 'two')]);
+    expect(collisions.has('a_b_0')).toBe(true);
+    expect(collisions.get('a_b_0')!.sort()).toEqual(['a/b#0', 'a_b#0']);
+  });
+
+  it('does not flag the SAME id appearing twice (only distinct raw ids collide)', () => {
+    // A real duplicate id is a different concern; identical raw ids are not a
+    // sanitization collision.
+    expect(findVectorIdCollisions([chunk('x#0', 'a'), chunk('x#0', 'b')]).size).toBe(0);
+  });
+
+  it('buildManifest throws on a vector-id collision instead of clobbering', () => {
+    expect(() => buildManifest([chunk('a/b#0', 'one'), chunk('a_b#0', 'two')])).toThrow(
+      /collision/i
+    );
+  });
+
+  it('diffChunks throws on a vector-id collision instead of deleting a live vector', () => {
+    // Previous run had BOTH chunks; now the "a/b#0" one is gone but "a_b#0"
+    // remains unchanged. Pre-fix this deleted vector "a_b_0" — the live vector
+    // for "a_b#0". The guard must refuse to produce that diff.
+    const c1 = chunk('a_b#0', 'lives');
+    const c2 = chunk('a/b#0', 'removed');
+    const prev = buildManifestUnsafe([c1, c2]); // simulate a legacy/colliding manifest
+    expect(() => diffChunks([c1], prev)).not.toThrow(); // only c1 -> no collision now
+    // But if both are present and collide, we must throw:
+    expect(() => diffChunks([c1, c2], null)).toThrow(/collision/i);
+  });
+
+  it('assertNoVectorIdCollisions passes for distinct vector ids', () => {
+    expect(() =>
+      assertNoVectorIdCollisions([chunk('a/b#0', 'x'), chunk('c/d#0', 'y')])
+    ).not.toThrow();
+  });
+});
+
+// Regression: manifest is keyed by VECTOR id, so the delete set contains
+// already-sanitized vector ids ready to hand straight to the store (no
+// double-transform). A removed chunk whose id needs sanitizing must surface its
+// vector id (not its raw id) in toDelete.
+describe('diffChunks keys by vector id', () => {
+  it('emits already-sanitized vector ids in toDelete', () => {
+    const prev = buildManifest([chunk('api/ref#0', '1'), chunk('api/ref#1', '2')]);
+    const diff = diffChunks([chunk('api/ref#0', '1')], prev);
+    // The removed chunk "api/ref#1" must appear as its vector id "api_ref_1".
+    expect(diff.toDelete).toEqual(['api_ref_1']);
+    expect(diff.toDelete.every(id => id === toVectorId(id))).toBe(true);
+  });
+
+  it('matches unchanged chunks across the raw-id -> vector-id boundary', () => {
+    const c = chunk('api/ref#0', 'stable');
+    const prev = buildManifest([c]);
+    const diff = diffChunks([c], prev);
+    expect(diff.unchangedCount).toBe(1);
+    expect(diff.toUpsert).toHaveLength(0);
+    expect(diff.toDelete).toHaveLength(0);
+  });
+});
+
+// Helper that bypasses the collision guard to construct a legacy-style manifest
+// for tests that need to simulate a pre-fix on-disk state.
+function buildManifestUnsafe(chunks: DocChunk[]): ReindexManifest {
+  const hashes: Record<string, string> = {};
+  for (const c of chunks) hashes[toVectorId(c.id)] = hashChunk(c);
+  return { version: MANIFEST_VERSION, generatedAt: 'x', hashes };
+}
 
 describe('manifest persistence', () => {
   let dir: string;

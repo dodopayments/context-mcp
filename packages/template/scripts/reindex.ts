@@ -44,7 +44,7 @@ import {
   diffChunks,
   loadManifest,
   saveManifest,
-  toVectorId,
+  assertNoVectorIdCollisions,
 } from '../src/reindex/manifest.js';
 
 // =============================================================================
@@ -108,22 +108,23 @@ Examples:
 `);
 }
 
-
 // =============================================================================
 // EMBEDDING & UPLOAD
 // =============================================================================
 
-type EmbedClient = {
-  provider: 'openai';
-  openai: OpenAI;
-  model: string;
-  dimensions: number;
-} | {
-  provider: 'gemini';
-  gemini: GoogleGenAI;
-  model: string;
-  dimensions: number;
-}
+type EmbedClient =
+  | {
+      provider: 'openai';
+      openai: OpenAI;
+      model: string;
+      dimensions: number;
+    }
+  | {
+      provider: 'gemini';
+      gemini: GoogleGenAI;
+      model: string;
+      dimensions: number;
+    };
 
 async function embedAndUpload(
   chunks: DocChunk[],
@@ -147,9 +148,19 @@ async function embedAndUpload(
     // Generate embeddings with the configured provider
     let embeddings: number[][];
     if (client.provider === 'gemini') {
-      embeddings = await generateEmbeddingsGemini(client.gemini, client.model, texts, client.dimensions);
+      embeddings = await generateEmbeddingsGemini(
+        client.gemini,
+        client.model,
+        texts,
+        client.dimensions
+      );
     } else {
-      embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model, client.dimensions);
+      embeddings = await generateEmbeddingsOpenAI(
+        client.openai,
+        texts,
+        client.model,
+        client.dimensions
+      );
     }
 
     // Convert to Pinecone records
@@ -333,6 +344,11 @@ async function reindex(): Promise<void> {
   if (!args.dryRun && allChunks.length > 0 && pinecone && embedClient) {
     const manifestPath = path.join(process.cwd(), 'data', 'reindex-manifest.json');
 
+    // Fail loudly BEFORE embedding/uploading if two distinct chunk ids sanitize
+    // to the same vector id. Otherwise the store would silently keep only one of
+    // them (and the incremental delete path could clobber a live vector).
+    assertNoVectorIdCollisions(allChunks);
+
     // Decide what to upload. In incremental mode we diff against the manifest;
     // otherwise we upload everything.
     let chunksToUpload = allChunks;
@@ -357,11 +373,9 @@ async function reindex(): Promise<void> {
       if (diff.toDelete.length > 0) {
         console.log('');
         console.log(`🗑️  Deleting ${diff.toDelete.length} stale vector(s)...`);
-        await deletePineconeVectors(
-          pinecone,
-          config.vectordb.indexName,
-          diff.toDelete.map(toVectorId)
-        );
+        // diff.toDelete is already in vector-id space (the manifest is keyed by
+        // toVectorId), so pass it straight through without re-sanitizing.
+        await deletePineconeVectors(pinecone, config.vectordb.indexName, diff.toDelete);
         console.log('   ✅ Deleted');
       }
     }

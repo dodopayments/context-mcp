@@ -22,8 +22,14 @@ import { type DocChunk, toVectorId } from '../types/index.js';
  *
  * v2: hash now also covers repository/language/description (embedding inputs)
  *     and category/version/documentPath (stored metadata).
+ * v3: manifest is now keyed by the *vector id* (`toVectorId(chunk.id)`) — the
+ *     SAME identity the store uses — instead of the raw `chunk.id`. Keying by the
+ *     raw id let two distinct chunks whose ids sanitize to the same vector id
+ *     (e.g. "a/b#0" and "a_b#0" both -> "a_b_0") diverge between the manifest and
+ *     the store, causing the delete path to clobber a live vector. Bumping forces
+ *     a full reindex so the manifest is rebuilt in the correct (vector-id) space.
  */
-export const MANIFEST_VERSION = 2;
+export const MANIFEST_VERSION = 3;
 
 export interface ReindexManifest {
   version: number;
@@ -35,7 +41,11 @@ export interface ReindexManifest {
 export interface ReindexDiff {
   /** Chunks that are new or whose content changed — must be embedded + upserted. */
   toUpsert: DocChunk[];
-  /** Chunk ids present last run but gone now — must be deleted from the store. */
+  /**
+   * VECTOR ids present last run but gone now — must be deleted from the store.
+   * These are already `toVectorId()`-sanitized (the manifest is keyed by vector
+   * id), so callers must pass them straight to the store WITHOUT re-sanitizing.
+   */
   toDelete: string[];
   /** Count of chunks whose hash is unchanged (skipped). */
   unchangedCount: number;
@@ -79,11 +89,63 @@ export function hashChunk(chunk: DocChunk): string {
   return hash.digest('hex');
 }
 
-/** Build a fresh manifest from the current set of chunks. */
+/**
+ * Detect chunks whose ids sanitize to the SAME vector id. Because the store is
+ * keyed by `toVectorId(chunk.id)` (a non-injective transform: every char outside
+ * [a-zA-Z0-9_-] becomes '_'), two distinct chunk ids like "a/b#0" and "a_b#0"
+ * both collapse to "a_b_0". The store can only hold one vector for that id, so
+ * the other chunk is silently dropped — and the incremental delete path can even
+ * remove a *live* vector. This must be surfaced loudly, never tolerated.
+ *
+ * Returns a map of vectorId -> the colliding raw chunk ids (length >= 2).
+ */
+export function findVectorIdCollisions(chunks: DocChunk[]): Map<string, string[]> {
+  const byVectorId = new Map<string, string[]>();
+  for (const chunk of chunks) {
+    const vid = toVectorId(chunk.id);
+    const ids = byVectorId.get(vid);
+    if (ids) {
+      if (!ids.includes(chunk.id)) ids.push(chunk.id);
+    } else {
+      byVectorId.set(vid, [chunk.id]);
+    }
+  }
+  const collisions = new Map<string, string[]>();
+  for (const [vid, ids] of byVectorId) {
+    if (ids.length > 1) collisions.set(vid, ids);
+  }
+  return collisions;
+}
+
+/**
+ * Throw if any two distinct chunk ids collide to the same vector id. Call this
+ * before building a manifest / uploading so silent data loss is impossible.
+ */
+export function assertNoVectorIdCollisions(chunks: DocChunk[]): void {
+  const collisions = findVectorIdCollisions(chunks);
+  if (collisions.size === 0) return;
+  const details = [...collisions.entries()]
+    .map(([vid, ids]) => `  ${vid} <- ${ids.map(id => JSON.stringify(id)).join(', ')}`)
+    .join('\n');
+  throw new Error(
+    `Vector id collision: ${collisions.size} distinct chunk id group(s) sanitize to the same ` +
+      `vector id, which would silently overwrite/delete each other in the store:\n${details}\n` +
+      `Make the chunk ids unique after toVectorId() sanitization.`
+  );
+}
+
+/**
+ * Build a fresh manifest from the current set of chunks.
+ *
+ * Keyed by VECTOR id (`toVectorId(chunk.id)`) so the manifest lives in the exact
+ * same identity space as the store. Throws on vector-id collisions rather than
+ * letting one chunk silently clobber another's hash.
+ */
 export function buildManifest(chunks: DocChunk[]): ReindexManifest {
+  assertNoVectorIdCollisions(chunks);
   const hashes: Record<string, string> = {};
   for (const chunk of chunks) {
-    hashes[chunk.id] = hashChunk(chunk);
+    hashes[toVectorId(chunk.id)] = hashChunk(chunk);
   }
   return {
     version: MANIFEST_VERSION,
@@ -102,18 +164,25 @@ export function buildManifest(chunks: DocChunk[]): ReindexManifest {
  * If `previous` is null (first run / version mismatch), every chunk is upserted.
  */
 export function diffChunks(chunks: DocChunk[], previous: ReindexManifest | null): ReindexDiff {
+  // Guard first: if two chunks collide to the same vector id we cannot reason
+  // about the diff at all (their hashes and the store entry are aliased). Fail
+  // loudly instead of silently deleting/overwriting one of them.
+  assertNoVectorIdCollisions(chunks);
+
   const toUpsert: DocChunk[] = [];
   let unchangedCount = 0;
 
   // Treat a version mismatch as a full reindex.
   const prevHashes = previous && previous.version === MANIFEST_VERSION ? previous.hashes : {};
 
-  const currentIds = new Set<string>();
+  // Track CURRENT vector ids (same identity space as the manifest keys).
+  const currentVectorIds = new Set<string>();
 
   for (const chunk of chunks) {
-    currentIds.add(chunk.id);
+    const vectorId = toVectorId(chunk.id);
+    currentVectorIds.add(vectorId);
     const newHash = hashChunk(chunk);
-    const oldHash = prevHashes[chunk.id];
+    const oldHash = prevHashes[vectorId];
     if (oldHash === newHash) {
       unchangedCount++;
     } else {
@@ -121,11 +190,13 @@ export function diffChunks(chunks: DocChunk[], previous: ReindexManifest | null)
     }
   }
 
-  // Anything in the previous manifest that's no longer present must be deleted.
+  // Anything in the previous manifest (already a vector id) that's no longer
+  // present must be deleted. Comparing vector id to vector id ensures we never
+  // delete a vector that is still live under a colliding raw id.
   const toDelete: string[] = [];
-  for (const id of Object.keys(prevHashes)) {
-    if (!currentIds.has(id)) {
-      toDelete.push(id);
+  for (const vectorId of Object.keys(prevHashes)) {
+    if (!currentVectorIds.has(vectorId)) {
+      toDelete.push(vectorId);
     }
   }
 
