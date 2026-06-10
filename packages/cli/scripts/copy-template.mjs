@@ -25,12 +25,19 @@ const EXCLUDED_DIRS = new Set([
   '.vscode',
   '.idea',
 ]);
-const EXCLUDED_FILES = new Set(['.DS_Store', 'Thumbs.db', 'config.yaml', '_clone.mts']);
+
+const EXCLUDED_FILES = new Set([
+  '.DS_Store',
+  'Thumbs.db',
+  'config.yaml',
+  '.env',
+  '.env.local',
+]);
 
 function excluded(src) {
   const name = path.basename(src);
   if (EXCLUDED_FILES.has(name)) return true;
-  if (name.startsWith('.env')) return true;
+  if (name.startsWith('.env.') && !name.endsWith('.example')) return true;
   if (name.endsWith('.log')) return true;
   if (name.endsWith('.tgz')) return true;
   const stat = fs.statSync(src);
@@ -46,7 +53,7 @@ fs.rmSync(destDir, { recursive: true, force: true });
 fs.cpSync(srcDir, destDir, { recursive: true, filter: (src) => !excluded(src) });
 
 // Sanity check: the copied template must be usable by `contextmcp init`.
-for (const required of ['package.json', 'config.example.yaml', 'gitignore', 'src']) {
+for (const required of ['package.json', 'config.example.yaml', '.env.example', 'gitignore', 'src']) {
   if (!fs.existsSync(path.join(destDir, required))) {
     console.error(`Copied template is missing required entry: ${required}`);
     process.exit(1);

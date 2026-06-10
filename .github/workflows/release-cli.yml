@@ -53,9 +53,8 @@ jobs:
       - name: Verify package
         working-directory: ./packages/cli
         run: |
-          npm pack
-          TARBALL=$(ls contextmcp-*.tgz)
-          for entry in package/dist/index.js package/template/package.json package/template/config.example.yaml; do
+          TARBALL=$(npm pack --json | jq -r '.[0].filename')
+          for entry in package/dist/index.js package/template/package.json package/template/config.example.yaml package/template/.env.example; do
             if ! tar -tzf "$TARBALL" | grep -qx "$entry"; then
               echo "::error::Published tarball is missing $entry"
               exit 1

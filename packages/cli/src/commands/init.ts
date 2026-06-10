@@ -20,6 +20,18 @@ interface InitOptions {
   install?: boolean;
 }
 
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'data', '.temp-repos', '.wrangler']);
+const SKIP_FILES = new Set(['.DS_Store', 'Thumbs.db', 'config.yaml', '.env', '.env.local']);
+
+function includeInScaffold(src: string): boolean {
+  const name = path.basename(src);
+  if (SKIP_FILES.has(name)) return false;
+  if (name.startsWith('.env.') && !name.endsWith('.example')) return false;
+  if (name.endsWith('.log') || name.endsWith('.tgz')) return false;
+  if (SKIP_DIRS.has(name) && fs.statSync(src).isDirectory()) return false;
+  return true;
+}
+
 function runCommand(command: string, cwd: string): string | null {
   try {
     execSync(command, { cwd, stdio: 'pipe' });
@@ -156,7 +168,7 @@ export async function initCommand(projectName?: string, options: InitOptions = {
     if (!templateDir) {
       throw new Error('Template directory not found in package or monorepo');
     }
-    await fs.copy(templateDir, targetDir);
+    await fs.copy(templateDir, targetDir, { filter: includeInScaffold });
     templateSpinner.succeed('Project template copied');
   } catch (error) {
     templateSpinner.fail('Failed to copy template');
