@@ -60,4 +60,4 @@ for (const required of ['package.json', 'config.example.yaml', '.env.example', '
   }
 }
 
-console.log(`Copied template to ${destDir}`);
+console.error(`Copied template to ${destDir}`);
