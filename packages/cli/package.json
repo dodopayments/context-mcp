@@ -14,6 +14,8 @@
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
     "typecheck": "tsc --noEmit",
+    "prepack": "node scripts/copy-template.mjs",
+    "postpack": "node scripts/copy-template.mjs --clean",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
