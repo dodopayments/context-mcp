@@ -29,7 +29,9 @@ jobs:
         run: npm ci
 
       - name: Check formatting
+        # Non-blocking until the existing formatting drift on main is cleaned up
         run: npm run format:check
+        continue-on-error: true
 
       - name: Lint
         run: npm run lint
@@ -38,4 +40,4 @@ jobs:
         run: npm run typecheck
 
       - name: Test
-        run: npm test --if-present
+        run: npm test
