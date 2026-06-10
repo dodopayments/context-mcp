@@ -20,12 +20,25 @@ interface InitOptions {
   install?: boolean;
 }
 
-function runCommand(command: string, cwd: string): boolean {
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'data', '.temp-repos', '.wrangler']);
+const SKIP_FILES = new Set(['.DS_Store', 'Thumbs.db', 'config.yaml', '.env', '.env.local']);
+
+function includeInScaffold(src: string): boolean {
+  const name = path.basename(src);
+  if (SKIP_FILES.has(name)) return false;
+  if (name.startsWith('.env.') && !name.endsWith('.example')) return false;
+  if (name.endsWith('.log') || name.endsWith('.tgz')) return false;
+  if (SKIP_DIRS.has(name) && fs.statSync(src).isDirectory()) return false;
+  return true;
+}
+
+function runCommand(command: string, cwd: string): string | null {
   try {
     execSync(command, { cwd, stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
+    return null;
+  } catch (error) {
+    if (!(error instanceof Error)) return null;
+    return `Command failed: ${command}\n   ${error.message}`;
   }
 }
 
@@ -144,10 +157,18 @@ export async function initCommand(projectName?: string, options: InitOptions = {
 
   // Step 1: Copy template
   const templateSpinner = ora('Copying project template...').start();
-  const templateDir = path.resolve(__dirname, '../../template');
+  // Installed package: template/ sits next to dist/ (copied in by prepack).
+  // Monorepo dev: fall back to packages/template two levels up from dist/.
+  const templateDir = [
+    path.resolve(__dirname, '../template'),
+    path.resolve(__dirname, '../../template'),
+  ].find((dir) => fs.existsSync(path.join(dir, 'package.json')));
 
   try {
-    await fs.copy(templateDir, targetDir);
+    if (!templateDir) {
+      throw new Error('Template directory not found in package or monorepo');
+    }
+    await fs.copy(templateDir, targetDir, { filter: includeInScaffold });
     templateSpinner.succeed('Project template copied');
   } catch (error) {
     templateSpinner.fail('Failed to copy template');
@@ -193,12 +214,12 @@ export async function initCommand(projectName?: string, options: InitOptions = {
   if (options.install !== false) {
     const installSpinner = ora('Installing dependencies...').start();
 
-    const success = runCommand('npm install', targetDir);
+    const errorMsg = runCommand('npm install', targetDir);
 
-    if (success) {
+    if (errorMsg === null) {
       installSpinner.succeed('Dependencies installed');
     } else {
-      installSpinner.warn('Could not install dependencies. Run "npm install" manually.');
+      installSpinner.warn(chalk.yellow(`Could not install dependencies.\n${errorMsg}\nRun "npm install" manually.`));
     }
   }
 
