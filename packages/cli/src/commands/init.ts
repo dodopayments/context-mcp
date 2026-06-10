@@ -145,9 +145,17 @@ export async function initCommand(projectName?: string, options: InitOptions = {
 
   // Step 1: Copy template
   const templateSpinner = ora('Copying project template...').start();
-  const templateDir = path.resolve(__dirname, '../../template');
+  // Installed package: template/ sits next to dist/ (copied in by prepack).
+  // Monorepo dev: fall back to packages/template two levels up from dist/.
+  const templateDir = [
+    path.resolve(__dirname, '../template'),
+    path.resolve(__dirname, '../../template'),
+  ].find((dir) => fs.existsSync(path.join(dir, 'package.json')));
 
   try {
+    if (!templateDir) {
+      throw new Error('Template directory not found in package or monorepo');
+    }
     await fs.copy(templateDir, targetDir);
     templateSpinner.succeed('Project template copied');
   } catch (error) {
