@@ -90,9 +90,14 @@ async function generateQueryEmbedding(env: Env, query: string): Promise<number[]
     return response.embeddings?.[0]?.values ?? [];
   }
 
-  // Default: OpenAI
+  // Default: OpenAI. Only text-embedding-3+ accept the `dimensions` param.
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const response = await openai.embeddings.create({ model: env.EMBEDDING_MODEL, input: [query] });
+  const supportsDimensions = env.EMBEDDING_MODEL.startsWith('text-embedding-3');
+  const response = await openai.embeddings.create({
+    model: env.EMBEDDING_MODEL,
+    input: [query],
+    ...(supportsDimensions ? { dimensions } : {}),
+  });
   return response.data[0].embedding;
 }
 
