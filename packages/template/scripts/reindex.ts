@@ -349,6 +349,16 @@ async function reindex(): Promise<void> {
     // them (and the incremental delete path could clobber a live vector).
     assertNoVectorIdCollisions(allChunks);
 
+    // Signature of the embedding model about to be used. Persisted in the
+    // manifest so a later run can detect a provider/model/dimension change and
+    // force a full re-embed (a content hash alone can't see that the model
+    // changed, which would otherwise leave "unchanged" chunks on stale vectors).
+    const embeddingSignature = {
+      provider: config.embeddings.provider,
+      model: config.embeddings.model,
+      dimensions: config.embeddings.dimensions,
+    };
+
     // Decide what to upload. In incremental mode we diff against the manifest;
     // otherwise we upload everything.
     let chunksToUpload = allChunks;
@@ -358,9 +368,15 @@ async function reindex(): Promise<void> {
       if (!previous) {
         console.log('');
         console.log('ℹ️  No previous manifest found — performing a full first-time index.');
+      } else if (previous.embedding && previous.embedding.model !== embeddingSignature.model) {
+        console.log('');
+        console.log(
+          `ℹ️  Embedding model changed (${previous.embedding.provider}/${previous.embedding.model} ` +
+            `-> ${embeddingSignature.provider}/${embeddingSignature.model}) — re-embedding everything.`
+        );
       }
 
-      const diff = diffChunks(allChunks, previous);
+      const diff = diffChunks(allChunks, previous, embeddingSignature);
       chunksToUpload = diff.toUpsert;
 
       console.log('');
@@ -398,7 +414,7 @@ async function reindex(): Promise<void> {
 
     // Persist the new manifest so the next incremental run can diff against it.
     // Written for every non-dry-run so a full reindex also seeds the manifest.
-    saveManifest(manifestPath, buildManifest(allChunks));
+    saveManifest(manifestPath, buildManifest(allChunks, embeddingSignature));
     console.log(`💾 Saved reindex manifest: ${manifestPath}`);
   } else if (args.dryRun) {
     console.log('');

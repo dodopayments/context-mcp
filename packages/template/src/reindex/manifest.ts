@@ -28,14 +28,46 @@ import { type DocChunk, toVectorId } from '../types/index.js';
  *     (e.g. "a/b#0" and "a_b#0" both -> "a_b_0") diverge between the manifest and
  *     the store, causing the delete path to clobber a live vector. Bumping forces
  *     a full reindex so the manifest is rebuilt in the correct (vector-id) space.
+ * v4: manifest now records the embedding *signature* (provider/model/dimensions).
+ *     A content hash only detects changes to a chunk's text/metadata — it can't
+ *     see that the embedding MODEL changed. Without this, switching providers or
+ *     models (e.g. openai text-embedding-3-small -> gemini, or 1536 -> 768 dims)
+ *     would leave every "unchanged" chunk pointing at a stale vector embedded by
+ *     the OLD model, silently corrupting search quality. A signature mismatch is
+ *     now treated as a full reindex so the whole index is re-embedded.
  */
-export const MANIFEST_VERSION = 3;
+export const MANIFEST_VERSION = 4;
+
+/**
+ * Identifies which embedding model produced the vectors a manifest describes.
+ * If any field changes between runs the stored vectors are no longer comparable
+ * to freshly embedded ones, so the manifest must be invalidated (full reindex).
+ */
+export interface EmbeddingSignature {
+  provider: string;
+  model: string;
+  dimensions: number;
+}
 
 export interface ReindexManifest {
   version: number;
   generatedAt: string;
+  /**
+   * The embedding model that produced the indexed vectors. Optional for
+   * backward-compat when loading pre-v4 manifests, but always written on save.
+   */
+  embedding?: EmbeddingSignature;
   /** Maps chunk id -> content hash. */
   hashes: Record<string, string>;
+}
+
+/** True if two embedding signatures describe the same model/provider/dimension. */
+export function sameEmbeddingSignature(
+  a: EmbeddingSignature | undefined,
+  b: EmbeddingSignature | undefined
+): boolean {
+  if (!a || !b) return false;
+  return a.provider === b.provider && a.model === b.model && a.dimensions === b.dimensions;
 }
 
 export interface ReindexDiff {
@@ -140,8 +172,11 @@ export function assertNoVectorIdCollisions(chunks: DocChunk[]): void {
  * Keyed by VECTOR id (`toVectorId(chunk.id)`) so the manifest lives in the exact
  * same identity space as the store. Throws on vector-id collisions rather than
  * letting one chunk silently clobber another's hash.
+ *
+ * `embedding` records which model produced the vectors so a later run can detect
+ * a model/provider/dimension change and force a full reindex.
  */
-export function buildManifest(chunks: DocChunk[]): ReindexManifest {
+export function buildManifest(chunks: DocChunk[], embedding?: EmbeddingSignature): ReindexManifest {
   assertNoVectorIdCollisions(chunks);
   const hashes: Record<string, string> = {};
   for (const chunk of chunks) {
@@ -150,6 +185,7 @@ export function buildManifest(chunks: DocChunk[]): ReindexManifest {
   return {
     version: MANIFEST_VERSION,
     generatedAt: new Date().toISOString(),
+    ...(embedding ? { embedding } : {}),
     hashes,
   };
 }
@@ -162,8 +198,17 @@ export function buildManifest(chunks: DocChunk[]): ReindexManifest {
  * - id whose hash matches -> unchanged (skipped)
  *
  * If `previous` is null (first run / version mismatch), every chunk is upserted.
+ *
+ * `currentEmbedding` is the signature of the model about to be used. If it
+ * differs from the manifest's recorded signature, the stored vectors were
+ * produced by a different model and are no longer comparable — so we ignore the
+ * old hashes entirely and re-embed every chunk (full reindex).
  */
-export function diffChunks(chunks: DocChunk[], previous: ReindexManifest | null): ReindexDiff {
+export function diffChunks(
+  chunks: DocChunk[],
+  previous: ReindexManifest | null,
+  currentEmbedding?: EmbeddingSignature
+): ReindexDiff {
   // Guard first: if two chunks collide to the same vector id we cannot reason
   // about the diff at all (their hashes and the store entry are aliased). Fail
   // loudly instead of silently deleting/overwriting one of them.
@@ -172,8 +217,16 @@ export function diffChunks(chunks: DocChunk[], previous: ReindexManifest | null)
   const toUpsert: DocChunk[] = [];
   let unchangedCount = 0;
 
-  // Treat a version mismatch as a full reindex.
-  const prevHashes = previous && previous.version === MANIFEST_VERSION ? previous.hashes : {};
+  // Treat a version mismatch OR an embedding-model change as a full reindex.
+  // For the model change we only invalidate when BOTH signatures are known and
+  // differ — an absent signature (pre-v4 manifest, or caller didn't pass one)
+  // falls back to the prior content-hash-only behaviour.
+  const embeddingChanged =
+    !!currentEmbedding &&
+    !!previous?.embedding &&
+    !sameEmbeddingSignature(previous.embedding, currentEmbedding);
+  const versionMatches = previous?.version === MANIFEST_VERSION;
+  const prevHashes = previous && versionMatches && !embeddingChanged ? previous.hashes : {};
 
   // Track CURRENT vector ids (same identity space as the manifest keys).
   const currentVectorIds = new Set<string>();

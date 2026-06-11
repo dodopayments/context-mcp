@@ -11,8 +11,10 @@ import {
   saveManifest,
   findVectorIdCollisions,
   assertNoVectorIdCollisions,
+  sameEmbeddingSignature,
   MANIFEST_VERSION,
   type ReindexManifest,
+  type EmbeddingSignature,
 } from './manifest.js';
 import type { DocChunk } from '../types/index.js';
 
@@ -134,6 +136,67 @@ describe('diffChunks', () => {
     const diff = diffChunks(chunks, stale);
     expect(diff.toUpsert).toHaveLength(1);
     expect(diff.unchangedCount).toBe(0);
+  });
+
+  const sig = (overrides: Partial<EmbeddingSignature> = {}): EmbeddingSignature => ({
+    provider: 'openai',
+    model: 'text-embedding-3-small',
+    dimensions: 1536,
+    ...overrides,
+  });
+
+  it('forces a full reindex when the embedding model changed', () => {
+    const chunks = [chunk('a', '1'), chunk('b', '2')];
+    const prev = buildManifest(chunks, sig());
+    // Same content, but a different embedding model -> stored vectors are stale.
+    const diff = diffChunks(
+      chunks,
+      prev,
+      sig({ model: 'text-embedding-3-large', dimensions: 3072 })
+    );
+    expect(diff.toUpsert).toHaveLength(2);
+    expect(diff.unchangedCount).toBe(0);
+  });
+
+  it('forces a full reindex when only the provider changed', () => {
+    const chunks = [chunk('a', '1')];
+    const prev = buildManifest(chunks, sig());
+    const diff = diffChunks(chunks, prev, sig({ provider: 'gemini' }));
+    expect(diff.toUpsert).toHaveLength(1);
+    expect(diff.unchangedCount).toBe(0);
+  });
+
+  it('still skips unchanged chunks when the embedding signature matches', () => {
+    const chunks = [chunk('a', '1'), chunk('b', '2')];
+    const prev = buildManifest(chunks, sig());
+    const diff = diffChunks(chunks, prev, sig());
+    expect(diff.toUpsert).toHaveLength(0);
+    expect(diff.unchangedCount).toBe(2);
+  });
+
+  it('falls back to content-hash diff when no signature is available (pre-v4 manifest)', () => {
+    const chunks = [chunk('a', '1'), chunk('b', 'CHANGED')];
+    // Manifest written without a signature; caller still passes one.
+    const prev = buildManifest([chunk('a', '1'), chunk('b', '2')]);
+    const diff = diffChunks(chunks, prev, sig());
+    expect(diff.toUpsert.map(c => c.id)).toEqual(['b']);
+    expect(diff.unchangedCount).toBe(1);
+  });
+});
+
+describe('sameEmbeddingSignature', () => {
+  const base = { provider: 'openai', model: 'm', dimensions: 1536 };
+  it('is true for identical signatures', () => {
+    expect(sameEmbeddingSignature({ ...base }, { ...base })).toBe(true);
+  });
+  it('is false when any field differs', () => {
+    expect(sameEmbeddingSignature(base, { ...base, model: 'other' })).toBe(false);
+    expect(sameEmbeddingSignature(base, { ...base, provider: 'gemini' })).toBe(false);
+    expect(sameEmbeddingSignature(base, { ...base, dimensions: 768 })).toBe(false);
+  });
+  it('is false when either side is undefined', () => {
+    expect(sameEmbeddingSignature(undefined, base)).toBe(false);
+    expect(sameEmbeddingSignature(base, undefined)).toBe(false);
   });
 });
 
