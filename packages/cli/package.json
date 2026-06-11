@@ -1,6 +1,6 @@
 {
   "name": "contextmcp",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "CLI to scaffold a ContextMCP documentation RAG server",
   "type": "module",
   "bin": {
@@ -14,6 +14,8 @@
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
     "typecheck": "tsc --noEmit",
+    "prepack": "node scripts/copy-template.mjs",
+    "postpack": "node scripts/copy-template.mjs --clean",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
