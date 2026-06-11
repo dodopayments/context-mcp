@@ -10,6 +10,7 @@
   "scripts": {
     "dev:cli": "npm run dev --workspace=contextmcp",
     "build:cli": "npm run build --workspace=contextmcp",
+    "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write .",
