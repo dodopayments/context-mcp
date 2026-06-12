@@ -7,9 +7,12 @@
  * the `validate` / `doctor` commands, and unit tests.
  */
 
-import type { ContextMCPConfig } from './schema.js';
+import type { ContextMCPConfig, EmbeddingProvider } from './schema.js';
 
-export type EmbeddingProvider = 'openai' | 'gemini' | 'cohere' | 'voyage' | 'ollama';
+// Re-exported here as a convenience so callers (e.g. doctor-checks) can import
+// `EmbeddingProvider` from either this module or schema.js. The canonical
+// definition lives in schema.ts so the Zod enum and this union stay in lockstep.
+export type { EmbeddingProvider };
 
 /**
  * How a model's output dimensions are constrained.

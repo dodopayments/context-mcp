@@ -4,6 +4,24 @@ import {
   validateDimensionMatch,
   EMBEDDING_PROVIDERS,
 } from './validate-embeddings.js';
+import { ConfigSchema, EMBEDDING_PROVIDER_IDS } from './schema.js';
+
+describe('schema/provider registry are in sync', () => {
+  it('the Zod enum accepts every provider in the registry', () => {
+    for (const provider of EMBEDDING_PROVIDER_IDS) {
+      const parsed = ConfigSchema.safeParse({
+        vectordb: { provider: 'pinecone', indexName: 'docs' },
+        embeddings: { provider, model: 'm', dimensions: 1024 },
+        sources: [{ name: 'docs', type: 'local', parser: 'markdown', localPath: '.' }],
+      });
+      expect(parsed.success, `schema should accept provider "${provider}"`).toBe(true);
+    }
+  });
+
+  it('every registry key is a schema-valid provider id (no drift)', () => {
+    expect([...EMBEDDING_PROVIDER_IDS].sort()).toEqual(Object.keys(EMBEDDING_PROVIDERS).sort());
+  });
+});
 
 describe('validateEmbeddingConfig', () => {
   it('accepts a valid OpenAI config', () => {
@@ -102,7 +120,6 @@ describe('validateEmbeddingConfig', () => {
 
   it('accepts a keyless provider (ollama) without requiring an API key', () => {
     const result = validateEmbeddingConfig(
-      // @ts-expect-error - ollama provider lands with PR #45; registry already knows it
       { provider: 'ollama', model: 'nomic-embed-text', dimensions: 768 },
       { checkEnv: true, env: {} }
     );
@@ -111,7 +128,6 @@ describe('validateEmbeddingConfig', () => {
 
   it('does not warn about unknown models for providers without a model registry', () => {
     const result = validateEmbeddingConfig(
-      // @ts-expect-error - cohere provider lands with PR #44; registry already knows it
       { provider: 'cohere', model: 'embed-english-v3.0', dimensions: 1024 },
       {}
     );

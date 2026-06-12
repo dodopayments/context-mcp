@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean:vectors": "tsx scripts/clean-vectors.ts",
-    "index:txt": "tsx scripts/index-to-txt.ts"
+    "index:txt": "tsx scripts/index-to-txt.ts",
+    "doctor": "tsx scripts/doctor.ts"
   },
   "keywords": [
     "mcp",
