@@ -111,8 +111,9 @@ npm run deploy
 | Type     | Description                  |
 | -------- | ---------------------------- |
 | `github` | Fetch from GitHub repository |
-| `local`  | Local file path              |
-| `url`    | Remote URL                   |
+| `local`   | Local file path              |
+| `url`     | Remote URL                   |
+| `website` | Crawl a docs website (sitemap or BFS) |
 
 ## Project Structure
 
