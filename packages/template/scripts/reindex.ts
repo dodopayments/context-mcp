@@ -15,7 +15,6 @@
 import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 
@@ -24,9 +23,8 @@ import { fetchSource, cleanupSources } from '../src/sources/index.js';
 import type { FetchedSource } from '../src/sources/index.js';
 import { parseSource } from '../src/parser/index.js';
 import type { DocChunk } from '../src/types/index.js';
+import { createVectorStore, type VectorStore } from '../src/vectorstore/index.js';
 import {
-  initPineconeIndex,
-  clearPineconeIndex,
   generateEmbeddingsOpenAI,
   generateEmbeddingsGemini,
   chunkToRecord,
@@ -113,12 +111,10 @@ type EmbedClient = {
 
 async function embedAndUpload(
   chunks: DocChunk[],
-  pinecone: Pinecone,
+  store: VectorStore,
   client: EmbedClient,
-  indexName: string,
   batchSize: number
 ): Promise<void> {
-  const index = pinecone.index(indexName);
   const total = chunks.length;
   let uploaded = 0;
 
@@ -138,11 +134,11 @@ async function embedAndUpload(
       embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model, client.dimensions);
     }
 
-    // Convert to Pinecone records
+    // Convert to embedding records
     const records = batch.map((chunk, idx) => chunkToRecord(chunk, embeddings[idx]));
 
-    // Upsert to Pinecone
-    await index.upsert(records);
+    // Upsert to the configured vector store (Pinecone, Qdrant, ...)
+    await store.upsert(records);
 
     uploaded += batch.length;
     const percent = Math.round((uploaded / total) * 100);
@@ -198,12 +194,11 @@ async function reindex(): Promise<void> {
   console.log('');
 
   // Initialize clients (unless dry run)
-  let pinecone: Pinecone | undefined;
+  let store: VectorStore | undefined;
   let embedClient: EmbedClient | undefined;
 
   if (!args.dryRun) {
     validateEmbeddingEnv(config.embeddings.provider as 'openai' | 'gemini');
-    pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
 
     if (config.embeddings.provider === 'gemini') {
       embedClient = {
@@ -221,19 +216,13 @@ async function reindex(): Promise<void> {
       };
     }
 
-    // Initialize and optionally clear Pinecone
-    const pineconeConfig = config.vectordb.pinecone;
-    await initPineconeIndex(
-      pinecone,
-      config.vectordb.indexName,
-      config.embeddings.dimensions,
-      pineconeConfig?.cloud || 'aws',
-      pineconeConfig?.region || 'us-east-1'
-    );
+    // Initialize and optionally clear the configured vector store.
+    store = createVectorStore(config);
+    await store.ensureIndex({ dimension: config.embeddings.dimensions });
 
     if (config.reindex.clearBeforeReindex) {
       console.log('🗑️  Clearing existing vectors...');
-      await clearPineconeIndex(pinecone, config.vectordb.indexName);
+      await store.clear();
       console.log('');
     }
   }
@@ -297,15 +286,14 @@ async function reindex(): Promise<void> {
   }
 
   // Upload if not dry run
-  if (!args.dryRun && allChunks.length > 0 && pinecone && embedClient) {
+  if (!args.dryRun && allChunks.length > 0 && store && embedClient) {
     console.log('');
     console.log(`🔄 Generating embeddings (${config.embeddings.provider}) and uploading...`);
 
     await embedAndUpload(
       allChunks,
-      pinecone,
+      store,
       embedClient,
-      config.vectordb.indexName,
       config.reindex.batchSize || DEFAULT_BATCH_SIZE
     );
   } else if (args.dryRun) {

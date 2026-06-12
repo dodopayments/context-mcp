@@ -99,6 +99,11 @@ export async function generateEmbeddingsGemini(
 
 /**
  * Initialize Pinecone index, creating if it doesn't exist
+ *
+ * @deprecated Use the backend-agnostic vector store instead:
+ * `createVectorStore(config).ensureIndex(...)` from `src/vectorstore`.
+ * Retained for backward compatibility.
+ *
  * @param pc - Pinecone client
  * @param indexName - Name of the index (from config)
  * @param dimension - Embedding dimension (from config)

@@ -50,11 +50,27 @@ Configure these variables in `wrangler.jsonc`:
 | `DEFAULT_TOP_K`       | `10`                      | Default number of search results |
 | `MAX_TOP_K`           | `20`                      | Maximum allowed results          |
 
+#### Vector Database
+
+| Variable             | Default                 | Description                                       |
+| -------------------- | ----------------------- | ------------------------------------------------- |
+| `VECTORDB_PROVIDER`  | `pinecone`              | `pinecone` or `qdrant` — the backend to search    |
+| `VECTORDB_NAMESPACE` | _(none)_                | Optional namespace; must match what you indexed   |
+| `QDRANT_URL`         | `http://localhost:6333` | Qdrant base URL (when `VECTORDB_PROVIDER=qdrant`) |
+| `QDRANT_COLLECTION`  | `PINECONE_INDEX_NAME`   | Qdrant collection name                            |
+
+Set the Qdrant Cloud key (if any) as a secret: `wrangler secret put QDRANT_API_KEY`.
+
+> **Qdrant note:** reranking uses Pinecone's inference API and is therefore
+> Pinecone-only. With `VECTORDB_PROVIDER=qdrant`, results are returned in
+> vector-similarity order (no rerank step), and `PINECONE_API_KEY` is not
+> required.
+
 #### Reranking Configuration
 
 | Variable             | Default              | Description                                     |
 | -------------------- | -------------------- | ----------------------------------------------- |
-| `ENABLE_RERANK`      | `true`               | Set to `false` to disable reranking             |
+| `ENABLE_RERANK`      | `true`               | Set to `false` to disable reranking (Pinecone)  |
 | `RERANK_MODEL`       | `pinecone-rerank-v0` | Pinecone reranking model to use                 |
 | `RERANK_FETCH_COUNT` | `30`                 | Number of candidates to fetch before reranking  |
 | `MAX_RERANK_CHARS`   | `1200`               | Max characters per document for reranking input |

@@ -76,13 +76,20 @@ export const SourceSchema = z
 
 // Vector database settings
 const VectorDbSchema = z.object({
-  provider: z.enum(['pinecone']).default('pinecone'),
+  provider: z.enum(['pinecone', 'qdrant']).default('pinecone'),
+  // Index name (Pinecone) / collection name (Qdrant).
   indexName: z.string(),
   namespace: z.string().optional(),
   pinecone: z
     .object({
       cloud: z.enum(['aws', 'gcp', 'azure']).default('aws'),
       region: z.string().default('us-east-1'),
+    })
+    .optional(),
+  qdrant: z
+    .object({
+      // Base URL; can also be set via QDRANT_URL env var.
+      url: z.string().url().optional(),
     })
     .optional(),
 });
