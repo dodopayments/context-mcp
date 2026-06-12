@@ -9,6 +9,7 @@ import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import * as path from 'path';
 import { SourceConfig } from '../config/schema.js';
 import { FetchedSource } from './github.js';
+import { fetchWithRetry } from './http.js';
 
 // =============================================================================
 // CONSTANTS
@@ -31,11 +32,8 @@ export async function fetchURLSource(source: SourceConfig): Promise<FetchedSourc
   const localPath = path.join(TEMP_DIR, source.name);
   mkdirSync(localPath, { recursive: true });
 
-  const response = await fetch(source.url);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${source.url}: ${response.status} ${response.statusText}`);
-  }
+  // Retries on transient network failures / 5xx / rate limits with a timeout.
+  const response = await fetchWithRetry(source.url);
 
   const content = await response.text();
 
