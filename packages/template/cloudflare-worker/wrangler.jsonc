@@ -27,10 +27,10 @@
     "SERVER_DESCRIPTION": "Search documentation using semantic search",
     "PINECONE_INDEX_NAME": "my-docs-mcp",
 
-    // Embedding provider: "openai" or "gemini"
-    // Set the matching API key via: wrangler secret put OPENAI_API_KEY / GEMINI_API_KEY
+    // Embedding provider: "openai", "gemini", "cohere", or "voyage"
+    // Set the matching API key via: wrangler secret put OPENAI_API_KEY / GEMINI_API_KEY / COHERE_API_KEY / VOYAGE_API_KEY
     "EMBEDDING_PROVIDER": "openai",
-    "EMBEDDING_MODEL": "text-embedding-3-large", // or "gemini-embedding-2-preview"
+    "EMBEDDING_MODEL": "text-embedding-3-large", // openai: text-embedding-3-*, gemini: gemini-embedding-2-preview, cohere: embed-v4.0, voyage: voyage-3
     "EMBEDDING_DIMENSIONS": "3072",
 
     "DEFAULT_TOP_K": "10",

@@ -89,9 +89,15 @@ const VectorDbSchema = z.object({
 
 // Embedding settings
 const EmbeddingsSchema = z.object({
-  provider: z.enum(['openai', 'gemini']).default('openai'),
+  provider: z.enum(['openai', 'gemini', 'cohere', 'voyage', 'ollama']).default('openai'),
   model: z.string().default('text-embedding-3-large'),
   dimensions: z.number().default(3072),
+  // Ollama-specific: base URL of the local Ollama server.
+  ollama: z
+    .object({
+      baseUrl: z.string().url().default('http://localhost:11434'),
+    })
+    .optional(),
 });
 
 // Reindex settings
