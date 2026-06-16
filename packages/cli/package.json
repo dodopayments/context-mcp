@@ -14,6 +14,8 @@
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --watch",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepack": "node scripts/copy-template.mjs",
     "postpack": "node scripts/copy-template.mjs --clean",
     "prepublishOnly": "npm run build"
@@ -39,16 +41,20 @@
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
+    "dotenv": "^17.2.3",
     "fs-extra": "^11.2.0",
     "ora": "^9.0.0",
-    "prompts": "^2.4.2"
+    "prompts": "^2.4.2",
+    "yaml": "^2.8.2",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^24.10.1",
     "@types/prompts": "^2.4.9",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.7"
   },
   "engines": {
     "node": ">=18"

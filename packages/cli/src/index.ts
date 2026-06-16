@@ -7,6 +7,7 @@
  * Usage:
  *   npx contextmcp init [project-name]
  *   npx contextmcp init my-docs-mcp
+ *   npx contextmcp validate
  */
 
 import { Command } from 'commander';
@@ -15,6 +16,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initCommand } from './commands/init.js';
+import { validateCommand } from './commands/validate.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +46,20 @@ program
   .action(async (projectName, options) => {
     try {
       await initCommand(projectName, options);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('validate')
+  .description('Validate config.yaml without running a reindex')
+  .option('-c, --config <path>', 'Validate a specific config file')
+  .option('--check-env', "Also verify the provider's API key env var is set")
+  .action(options => {
+    try {
+      validateCommand(options);
     } catch (error) {
       console.error(chalk.red('\n❌ Error:'), error instanceof Error ? error.message : error);
       process.exit(1);

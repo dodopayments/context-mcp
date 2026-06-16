@@ -1,12 +1,12 @@
 /**
- * Pure config-validation logic, extracted from scripts/validate.ts so it can be
- * unit-tested without spawning a process or touching argv/stdout.
+ * Pure config-validation logic for the `validate` command. Kept free of argv,
+ * stdout, and process.exit so it can be unit-tested directly.
  */
 
 import { existsSync, readFileSync } from 'fs';
 import { parse as parseYaml } from 'yaml';
-import { ConfigSchema, type ContextMCPConfig } from './schema.js';
-import { validateEmbeddingConfig } from './validate-embeddings.js';
+import { ConfigSchema, type ContextMCPConfig } from '../../../template/src/config/schema.js';
+import { validateEmbeddingConfig } from '../../../template/src/config/validate-embeddings.js';
 
 /**
  * Whether a raw `embeddings` value has the minimal string fields the semantic

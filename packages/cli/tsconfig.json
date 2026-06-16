@@ -8,9 +8,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "outDir": "./dist",
-    "rootDir": "./src"
+    // Type-check only — tsup produces the build and .d.ts. Without emit there is
+    // no rootDir constraint, so commands can import shared logic from the
+    // template package (outside ./src) without a TS6059 error.
+    "noEmit": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
