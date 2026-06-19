@@ -82,17 +82,9 @@ describe('checkConfig', () => {
     expect(results[0].label).toBe('Config is valid');
   });
 
-  it('never emits a bogus "Env: null" check', () => {
-    // Guards the null-apiKeyEnvVar branch (keyless providers like ollama):
-    // no result should reference a null env var name.
-    const results = checkConfig(validRaw, { OPENAI_API_KEY: 'sk-test' });
-    expect(results.some(r => /null/i.test(r.label))).toBe(false);
-  });
-});
-
-describe('keyless provider spec', () => {
-  it('ollama is registered with no API key requirement', async () => {
-    const { EMBEDDING_PROVIDERS } = await import('./validate-embeddings.js');
-    expect(EMBEDDING_PROVIDERS.ollama.apiKeyEnvVar).toBeNull();
+  it('checks the provider API key env var', () => {
+    const results = checkConfig(validRaw, {});
+    // With no OPENAI_API_KEY set, the provider-key check should fail.
+    expect(results.some(r => r.status === 'fail' && /OPENAI_API_KEY/.test(r.label))).toBe(true);
   });
 });

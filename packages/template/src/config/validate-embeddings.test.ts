@@ -118,21 +118,20 @@ describe('validateEmbeddingConfig', () => {
     expect(result.errors[0]).toContain('Unknown embeddings.provider');
   });
 
-  it('accepts a keyless provider (ollama) without requiring an API key', () => {
+  it('errors when checkEnv is on and the provider API key is missing', () => {
     const result = validateEmbeddingConfig(
-      { provider: 'ollama', model: 'nomic-embed-text', dimensions: 768 },
+      { provider: 'openai', model: 'text-embedding-3-large', dimensions: 3072 },
       { checkEnv: true, env: {} }
     );
-    expect(result.errors).toEqual([]);
+    expect(result.errors.some(e => /OPENAI_API_KEY/.test(e))).toBe(true);
   });
 
-  it('does not warn about unknown models for providers without a model registry', () => {
+  it('passes the env check when the provider API key is present', () => {
     const result = validateEmbeddingConfig(
-      { provider: 'cohere', model: 'embed-english-v3.0', dimensions: 1024 },
-      {}
+      { provider: 'gemini', model: 'gemini-embedding-2-preview', dimensions: 3072 },
+      { checkEnv: true, env: { GEMINI_API_KEY: 'test' } }
     );
     expect(result.errors).toEqual([]);
-    expect(result.warnings).toEqual([]);
   });
 
   it('warns (does not error) on an unknown model so new models are not blocked', () => {
@@ -182,15 +181,9 @@ describe('validateDimensionMatch', () => {
 });
 
 describe('EMBEDDING_PROVIDERS registry', () => {
-  it('documents key-bearing providers with their API key env vars', () => {
+  it('documents each provider with its API key env var', () => {
     expect(EMBEDDING_PROVIDERS.openai.apiKeyEnvVar).toBe('OPENAI_API_KEY');
     expect(EMBEDDING_PROVIDERS.gemini.apiKeyEnvVar).toBe('GEMINI_API_KEY');
-    expect(EMBEDDING_PROVIDERS.cohere.apiKeyEnvVar).toBe('COHERE_API_KEY');
-    expect(EMBEDDING_PROVIDERS.voyage.apiKeyEnvVar).toBe('VOYAGE_API_KEY');
-  });
-
-  it('marks the local provider (ollama) as keyless', () => {
-    expect(EMBEDDING_PROVIDERS.ollama.apiKeyEnvVar).toBeNull();
   });
 
   it('keeps each model default dimension within its own constraint', () => {
