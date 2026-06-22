@@ -14,12 +14,11 @@ import { validateEmbeddingConfig } from './validate-embeddings.js';
 // CONSTANTS
 // =============================================================================
 
-const CONFIG_PATHS = [
-  'config.yaml',
-  'config.yml',
-  'config/config.yaml',
-  '.config.yaml'
-];
+/**
+ * Standard locations searched for a config file, in priority order.
+ * Exported so scripts (e.g. doctor) reuse the same list instead of duplicating it.
+ */
+export const CONFIG_PATHS = ['config.yaml', 'config.yml', 'config/config.yaml', '.config.yaml'];
 
 // =============================================================================
 // ENVIRONMENT VARIABLE SUBSTITUTION
@@ -52,9 +51,10 @@ function substituteEnvVars(content: string): string {
 // =============================================================================
 
 /**
- * Find the configuration file in standard locations
+ * Find the configuration file in standard locations.
+ * Exported so scripts (e.g. doctor) reuse the same lookup logic.
  */
-function findConfigFile(): string | null {
+export function findConfigFile(): string | null {
   for (const configPath of CONFIG_PATHS) {
     if (existsSync(configPath)) {
       return configPath;
@@ -107,11 +107,17 @@ export function loadConfig(customPath?: string): ContextMCPConfig {
   }
 
   // Semantic validation beyond Zod's structural checks: catch embedding
-  // provider/model/dimension mismatches before a reindex starts.
+  // provider/model/dimension mismatches that would produce a failed or corrupt
+  // reindex (wrong-dimension vectors, unknown provider). This runs on *every*
+  // loadConfig() — index, serve, reindex, etc. — by design, since a hard
+  // mismatch is never something a caller wants to proceed past.
+  //
+  // We only surface hard ERRORS here. Soft warnings (e.g. "unknown model" for a
+  // newly-released model the registry doesn't know yet) are intentionally NOT
+  // printed on every startup — they'd be false-positive noise for commands that
+  // don't care. Those warnings are surfaced by the `doctor` / `validate`
+  // commands, which call validateEmbeddingConfig() directly and report both.
   const embeddingCheck = validateEmbeddingConfig(parsed.data.embeddings);
-  for (const warning of embeddingCheck.warnings) {
-    console.warn(`⚠️  ${warning}`);
-  }
   if (embeddingCheck.errors.length > 0) {
     console.error('❌ Embedding configuration is invalid:');
     for (const error of embeddingCheck.errors) {

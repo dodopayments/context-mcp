@@ -7,9 +7,12 @@
  * the `validate` / `doctor` commands, and unit tests.
  */
 
-import type { ContextMCPConfig } from './schema.js';
+import type { ContextMCPConfig, EmbeddingProvider } from './schema.js';
 
-export type EmbeddingProvider = 'openai' | 'gemini' | 'cohere' | 'voyage' | 'ollama';
+// Re-exported here as a convenience so callers (e.g. doctor-checks) can import
+// `EmbeddingProvider` from either this module or schema.js. The canonical
+// definition lives in schema.ts so the Zod enum and this union stay in lockstep.
+export type { EmbeddingProvider };
 
 /**
  * How a model's output dimensions are constrained.
@@ -32,11 +35,8 @@ export interface ModelSpec {
 }
 
 export interface ProviderSpec {
-  /**
-   * Environment variable holding the provider's API key, or `null` for
-   * providers that need no key (e.g. a local Ollama server).
-   */
-  apiKeyEnvVar: string | null;
+  /** Environment variable holding the provider's API key. */
+  apiKeyEnvVar: string;
   /** Known models keyed by model id. */
   models: Record<string, ModelSpec>;
 }
@@ -63,10 +63,9 @@ const fixed = (values: number[], defaultDimension: number): DimensionConstraint 
  * existing index is valid and must not be rejected. Older fixed-size models
  * (`text-embedding-ada-002`) use exact `fixed` lists.
  *
- * Providers without a known model registry (cohere/voyage/ollama) are still
- * listed so the provider itself validates; their model dimensions are treated
- * as unknown (a warning, never a hard error) since they evolve quickly and run
- * against user-chosen local/hosted models.
+ * Each provider may expose a model registry with per-model dimension
+ * constraints. Unknown models (not in the registry) are treated as a warning,
+ * never a hard error, since model lineups evolve quickly.
  */
 export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
   openai: {
@@ -82,21 +81,6 @@ export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
     models: {
       'gemini-embedding-2-preview': { dimensions: range(1, 3072, 3072) },
     },
-  },
-  cohere: {
-    apiKeyEnvVar: 'COHERE_API_KEY',
-    // Cohere embedding models evolve quickly; dimensions are validated against
-    // the index at reindex time rather than a hardcoded list here.
-    models: {},
-  },
-  voyage: {
-    apiKeyEnvVar: 'VOYAGE_API_KEY',
-    models: {},
-  },
-  ollama: {
-    // Local server — no API key required.
-    apiKeyEnvVar: null,
-    models: {},
   },
 };
 
@@ -153,9 +137,9 @@ export function validateEmbeddingConfig(
   const knownModels = Object.keys(providerSpec.models);
   const modelSpec = providerSpec.models[model];
   if (!modelSpec) {
-    // Providers with no registered models (cohere/voyage/ollama) shouldn't emit
-    // a noisy "known models: " list — dimensions are validated against the
-    // index at reindex time for those.
+    // Only emit a "known models: " hint when the provider actually has a
+    // registry; otherwise dimensions are validated against the index at
+    // reindex time.
     if (knownModels.length > 0) {
       warnings.push(
         `Unknown model "${model}" for provider "${provider}". Known models: ${knownModels.join(
@@ -186,8 +170,8 @@ export function validateEmbeddingConfig(
     }
   }
 
-  // 3. Optional env-var presence check (skipped for keyless providers).
-  if (options.checkEnv && providerSpec.apiKeyEnvVar) {
+  // 3. Optional env-var presence check.
+  if (options.checkEnv) {
     const env = options.env ?? process.env;
     if (!env[providerSpec.apiKeyEnvVar]) {
       errors.push(
