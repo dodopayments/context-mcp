@@ -131,7 +131,7 @@ sources:
     repository: owner/repo # GitHub repo
     branch: main # Optional, defaults to main
     path: docs/ # Optional, subdirectory
-    parser: mdx # mdx, markdown, or openapi
+    parser: mdx # mdx, markdown, openapi, or html
     baseUrl: https://docs.example.com
     skipDirs:
       - node_modules
@@ -166,6 +166,7 @@ sources:
 | `mdx`      | MDX/Markdown docs       | Extracts frontmatter, preserves code blocks |
 | `markdown` | Plain markdown, READMEs | Simple parsing, language hints              |
 | `openapi`  | Swagger/OpenAPI specs   | Generates docs from API definitions         |
+| `html`     | Raw `.html`/`.htm` docs | Strips boilerplate, converts to Markdown    |
 
 ### Language Hints
 
