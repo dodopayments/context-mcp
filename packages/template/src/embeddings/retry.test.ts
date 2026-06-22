@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { isRetryableError, withRetry, retryAfterMs } from './core.js';
+import { isRetryableError, isRetryableUpsertError, withRetry, retryAfterMs } from './core.js';
 
 describe('isRetryableError', () => {
   it('retries on rate limit (429) and request timeout (408)', () => {
@@ -47,6 +47,56 @@ describe('isRetryableError', () => {
   it('does NOT retry on a generic error with no status or code', () => {
     expect(isRetryableError(new Error('boom'))).toBe(false);
     expect(isRetryableError({ code: 'EACCES' })).toBe(false);
+  });
+
+  it('does NOT retry a Pinecone connection error (no status/code exposed)', () => {
+    // The Pinecone SDK's PineconeConnectionError exposes neither .status nor a
+    // top-level .code (the real network code is nested several causes deep), so
+    // the generic predicate cannot recognise it — that is why upsert needs
+    // isRetryableUpsertError. See experiment in PR #43.
+    const connErr = new Error('Request failed to reach Pinecone');
+    connErr.name = 'PineconeConnectionError';
+    expect(isRetryableError(connErr)).toBe(false);
+  });
+});
+
+describe('isRetryableUpsertError', () => {
+  it('retries a Pinecone connection error the SDK does not retry', () => {
+    // Matched by name: the SDK does not export the class, and its own docs use
+    // e.name === 'PineconeConnectionError' as the public discriminator.
+    const connErr = new Error('Request failed to reach Pinecone');
+    connErr.name = 'PineconeConnectionError';
+    expect(isRetryableUpsertError(connErr)).toBe(true);
+  });
+
+  it('does NOT retry a Pinecone client error (4xx)', () => {
+    const badRequest = new Error('bad request');
+    badRequest.name = 'PineconeBadRequestError';
+    expect(isRetryableUpsertError(badRequest)).toBe(false);
+  });
+
+  it('still delegates to isRetryableError for raw network/status errors', () => {
+    expect(isRetryableUpsertError({ code: 'ECONNRESET' })).toBe(true);
+    expect(isRetryableUpsertError({ status: 503 })).toBe(true);
+    expect(isRetryableUpsertError({ status: 400 })).toBe(false);
+  });
+
+  it('drives withRetry to retry a connection-failed upsert then succeed', async () => {
+    let calls = 0;
+    const result = await withRetry(
+      async () => {
+        calls++;
+        if (calls < 2) {
+          const e = new Error('Request failed to reach Pinecone');
+          e.name = 'PineconeConnectionError';
+          throw e;
+        }
+        return 'upserted';
+      },
+      { shouldRetry: isRetryableUpsertError, maxAttempts: 3, baseDelayMs: 1 }
+    );
+    expect(result).toBe('upserted');
+    expect(calls).toBe(2);
   });
 });
 

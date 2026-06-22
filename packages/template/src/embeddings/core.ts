@@ -358,6 +358,17 @@ export function isRetryableError(err: unknown): boolean {
 }
 
 /**
+ * Retry predicate for Pinecone upsert. The SDK already retries 5xx internally,
+ * but not connection-level failures (PineconeConnectionError) — the transient
+ * blip worth retrying during a long reindex. Matched by name since the SDK
+ * doesn't export the class. Falls back to isRetryableError for raw errors.
+ */
+export function isRetryableUpsertError(err: unknown): boolean {
+  if (err instanceof Error && err.name === 'PineconeConnectionError') return true;
+  return isRetryableError(err);
+}
+
+/**
  * Honour a Retry-After header (seconds or HTTP-date) if present on the error.
  * Returns a delay in ms, or undefined if not present/parseable.
  */
