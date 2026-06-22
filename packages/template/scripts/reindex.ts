@@ -32,6 +32,8 @@ import {
   chunkToRecord,
   prepareChunkForEmbedding,
   sleep,
+  withRetry,
+  isRetryableUpsertError,
 } from '../src/embeddings/core.js';
 import {
   validateEmbeddingEnv,
@@ -141,8 +143,12 @@ async function embedAndUpload(
     // Convert to Pinecone records
     const records = batch.map((chunk, idx) => chunkToRecord(chunk, embeddings[idx]));
 
-    // Upsert to Pinecone
-    await index.upsert(records);
+    // Retry connection-level upsert failures (SDK handles 5xx, not these).
+    // upsert is idempotent by id, so retrying is safe.
+    await withRetry(() => index.upsert(records), {
+      label: 'Pinecone upsert',
+      shouldRetry: isRetryableUpsertError,
+    });
 
     uploaded += batch.length;
     const percent = Math.round((uploaded / total) * 100);
