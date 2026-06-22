@@ -141,6 +141,24 @@ sources:
       - CHANGELOG.md
 ```
 
+### GitLab Repository
+
+Clone from gitlab.com or a self-hosted GitLab instance. Set `GITLAB_TOKEN` for
+private projects.
+
+```yaml
+sources:
+  - name: docs
+    displayName: "My Docs"
+    type: gitlab
+    repository: mygroup/mysubgroup/docs # group(s)/project
+    branch: main
+    path: docs/ # optional subdirectory
+    parser: mdx
+    baseUrl: https://docs.example.com
+    gitlabHost: gitlab.example.com # optional, defaults to gitlab.com
+```
+
 ### Parser Types
 
 | Parser     | Use For                 | Features                                    |

@@ -18,12 +18,15 @@ export const SourceSchema = z
     displayName: z.string().optional(),
 
     // Source type
-    type: z.enum(['github', 'local', 'url']),
+    type: z.enum(['github', 'gitlab', 'local', 'url']),
 
-    // GitHub sources
+    // GitHub / GitLab sources
     repository: z.string().optional(),
     branch: z.string().default('main'),
     path: z.string().default('.'),
+
+    // GitLab self-hosted host (default gitlab.com)
+    gitlabHost: z.string().optional(),
 
     // URL sources
     url: z.string().url().optional(),
@@ -54,7 +57,7 @@ export const SourceSchema = z
   })
   .refine(
     data => {
-      if (data.type === 'github' && !data.repository) {
+      if ((data.type === 'github' || data.type === 'gitlab') && !data.repository) {
         return false;
       }
       if (data.type === 'url' && !data.url) {
@@ -66,7 +69,8 @@ export const SourceSchema = z
       return true;
     },
     {
-      message: 'Source must have repository (for github), url (for url), or localPath (for local)',
+      message:
+        'Source must have repository (for github/gitlab), url (for url), or localPath (for local)',
     }
   );
 
