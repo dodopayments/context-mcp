@@ -2,7 +2,7 @@
  * Parser Router
  *
  * Routes documentation sources to the appropriate parser/chunker.
- * Supports MDX, Markdown, and OpenAPI parsing.
+ * Supports MDX, Markdown, OpenAPI, and HTML parsing.
  */
 
 import { SourceConfig } from '../config/schema.js';

@@ -64,7 +64,7 @@ const MAIN_CONTENT_SELECTORS = ['main', 'article', '[role="main"]', '#content', 
 // FILE DISCOVERY
 // =============================================================================
 
-function findHtmlFiles(
+export function findHtmlFiles(
   dir: string,
   skipDirs: string[],
   skipFiles: string[],
@@ -84,6 +84,9 @@ function findHtmlFiles(
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      // Intentionally skip dot-directories (e.g. .git, .svn, .next) so we never
+      // descend into VCS/build metadata. (Note: the markdown chunker doesn't do
+      // this today — a known sibling-parser inconsistency tracked separately.)
       if (entry.name.startsWith('.') || skipDirsSet.has(entry.name.toLowerCase())) continue;
       files.push(...findHtmlFiles(fullPath, skipDirs, skipFiles, baseDir));
     } else if (entry.isFile()) {
@@ -166,10 +169,10 @@ export function parseHTMLSource(
   const stat = fs.statSync(localPath);
 
   // A source may point at a single file (e.g. a URL-fetched page) or a dir.
-  // skipDirs/skipFiles are optional in the schema, so default them defensively.
   const files: string[] = stat.isFile()
     ? [path.basename(localPath)]
-    : findHtmlFiles(localPath, source.skipDirs ?? [], source.skipFiles ?? []);
+    : // skipDirs/skipFiles are optional in the schema, so default them defensively.
+      findHtmlFiles(localPath, source.skipDirs ?? [], source.skipFiles ?? []);
   const rootDir = stat.isFile() ? path.dirname(localPath) : localPath;
 
   if (files.length === 0) return [];
@@ -183,37 +186,57 @@ export function parseHTMLSource(
 
   for (const file of files) {
     const fullPath = path.join(rootDir, file);
-    let html: string;
+    // Process each file defensively: a single malformed/hostile document
+    // (e.g. pathologically deep nesting that overflows the HTML parser's
+    // recursive innerHTML walk, or any conversion error) must NOT abort the
+    // whole source and silently drop chunks from every other good file.
     try {
-      html = fs.readFileSync(fullPath, 'utf-8');
-    } catch {
+      const html = fs.readFileSync(fullPath, 'utf-8');
+
+      const { markdown } = htmlToMarkdown(html);
+      if (!markdown.trim()) continue;
+
+      // Resolve the source URL. Prefer the crawler's exact mapping (preserves
+      // query strings and avoids a synthesized ".html" that 404s); otherwise
+      // fall back to reconstructing from baseUrl + relative path.
+      const relKey = file.split(path.sep).join('/');
+      const sourceUrl =
+        urlMap[relKey] ?? (source.baseUrl ? `${source.baseUrl.replace(/\/$/, '')}/${file}` : '');
+
+      const dirName = path.dirname(file);
+      const fileContextName =
+        dirName !== '.' ? `${contextName}/${path.basename(dirName)}` : contextName;
+
+      const chunks = parseMarkdownFile(
+        markdown,
+        sourceUrl,
+        fileContextName,
+        // Use a .md filename so the markdown chunker treats it as generic docs.
+        file.replace(/\.html?$/i, '.md'),
+        language,
+        chunkConfig
+      );
+
+      // The markdown chunker derives ids/paths from contextName only (e.g.
+      // "<ctx>/readme#0"), so fanning every .html file through it produces
+      // COLLIDING ids across pages. Records are upserted keyed by id, so
+      // colliding chunks silently overwrite each other -> data loss. Namespace
+      // each chunk by its real source file to guarantee uniqueness.
+      const fileKey = file.replace(/\\/g, '/');
+      for (const chunk of chunks) {
+        chunk.id = `${contextName}/${fileKey}#${chunk.id.split('#').pop()}`;
+        chunk.documentPath = `${contextName}/${fileKey}`;
+      }
+
+      allChunks.push(...chunks);
+    } catch (err) {
+      // Skip the offending file but keep going so the rest of the source is
+      // still indexed. RangeError here is typically a stack overflow from
+      // deeply-nested markup inside node-html-parser.
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[html-chunker] Skipping ${file}: ${reason}`);
       continue;
     }
-
-    const { markdown } = htmlToMarkdown(html);
-    if (!markdown.trim()) continue;
-
-    // Resolve the source URL. Prefer the crawler's exact mapping (preserves
-    // query strings and avoids a synthesized ".html" that 404s); otherwise
-    // fall back to reconstructing from baseUrl + relative path.
-    const relKey = file.split(path.sep).join('/');
-    const sourceUrl =
-      urlMap[relKey] ?? (source.baseUrl ? `${source.baseUrl.replace(/\/$/, '')}/${file}` : '');
-
-    const dirName = path.dirname(file);
-    const fileContextName =
-      dirName !== '.' ? `${contextName}/${path.basename(dirName)}` : contextName;
-
-    const chunks = parseMarkdownFile(
-      markdown,
-      sourceUrl,
-      fileContextName,
-      // Use a .md filename so the markdown chunker treats it as generic docs.
-      file.replace(/\.html?$/i, '.md'),
-      language,
-      chunkConfig
-    );
-    allChunks.push(...chunks);
   }
 
   return allChunks;

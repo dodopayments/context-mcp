@@ -7,6 +7,7 @@
 
 import { SourceConfig } from '../config/schema.js';
 import { fetchGitHubSource, type FetchedSource } from './github.js';
+import { fetchGitLabSource } from './gitlab.js';
 import { fetchLocalSource } from './local.js';
 import { fetchURLSource } from './url.js';
 import { fetchWebsiteSource } from './website.js';
@@ -28,6 +29,9 @@ export async function fetchSource(source: SourceConfig): Promise<FetchedSource |
   switch (source.type) {
     case 'github':
       return fetchGitHubSource(source);
+
+    case 'gitlab':
+      return fetchGitLabSource(source);
 
     case 'local':
       return fetchLocalSource(source);

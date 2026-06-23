@@ -18,12 +18,15 @@ export const SourceSchema = z
     displayName: z.string().optional(),
 
     // Source type
-    type: z.enum(['github', 'local', 'url', 'website']),
+    type: z.enum(['github', 'gitlab', 'local', 'url', 'website']),
 
-    // GitHub sources
+    // GitHub / GitLab sources
     repository: z.string().optional(),
     branch: z.string().default('main'),
     path: z.string().default('.'),
+
+    // GitLab self-hosted host (default gitlab.com)
+    gitlabHost: z.string().optional(),
 
     // URL / website sources
     url: z.string().url().optional(),
@@ -59,7 +62,7 @@ export const SourceSchema = z
   })
   .refine(
     data => {
-      if (data.type === 'github' && !data.repository) {
+      if ((data.type === 'github' || data.type === 'gitlab') && !data.repository) {
         return false;
       }
       if ((data.type === 'url' || data.type === 'website') && !data.url) {
@@ -72,7 +75,7 @@ export const SourceSchema = z
     },
     {
       message:
-        'Source must have repository (for github), url (for url/website), or localPath (for local)',
+        'Source must have repository (for github/gitlab), url (for url/website), or localPath (for local)',
     }
   );
 
@@ -94,8 +97,16 @@ const VectorDbSchema = z.object({
 });
 
 // Embedding settings
+//
+// `EMBEDDING_PROVIDER_IDS` is the single source of truth for which providers are
+// accepted. The Zod enum below and the `EmbeddingProvider` union are both
+// derived from it, so the schema (what config.yaml accepts) and the provider
+// registry in `validate-embeddings.ts` can never drift apart.
+export const EMBEDDING_PROVIDER_IDS = ['openai', 'gemini'] as const;
+export type EmbeddingProvider = (typeof EMBEDDING_PROVIDER_IDS)[number];
+
 const EmbeddingsSchema = z.object({
-  provider: z.enum(['openai', 'gemini']).default('openai'),
+  provider: z.enum(EMBEDDING_PROVIDER_IDS).default('openai'),
   model: z.string().default('text-embedding-3-large'),
   dimensions: z.number().default(3072),
 });

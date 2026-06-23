@@ -23,10 +23,10 @@ Required environment variables:
 
 ContextMCP supports two embedding providers. Pick one in `config.yaml`:
 
-| Provider | `model`                     | `dimensions` | Env var          |
-| -------- | --------------------------- | ------------ | ---------------- |
-| `openai` | `text-embedding-3-large`    | `3072`       | `OPENAI_API_KEY` |
-| `gemini` | `gemini-embedding-2-preview`| `3072`       | `GEMINI_API_KEY` |
+| Provider | `model`                      | `dimensions` | Env var          |
+| -------- | ---------------------------- | ------------ | ---------------- |
+| `openai` | `text-embedding-3-large`     | `3072`       | `OPENAI_API_KEY` |
+| `gemini` | `gemini-embedding-2-preview` | `3072`       | `GEMINI_API_KEY` |
 
 You only need the API key for the provider you choose.
 
@@ -100,19 +100,20 @@ npm run deploy
 
 ## Available Parsers
 
-| Parser     | Use Case                                               | Extensions       |
-| ---------- | ------------------------------------------------------ | ---------------- |
-| `mdx`      | MDX/ documentation (Mintlify, Fumadocs)                | `.mdx`           |
-| `markdown` | Plain markdown files (READMEs, CHANGELOGs)             | `.md`            |
-| `openapi`  | OpenAPI/Swagger specifications                         | `.yaml`, `.json` |
+| Parser     | Use Case                                   | Extensions       |
+| ---------- | ------------------------------------------ | ---------------- |
+| `mdx`      | MDX/ documentation (Mintlify, Fumadocs)    | `.mdx`           |
+| `markdown` | Plain markdown files (READMEs, CHANGELOGs) | `.md`            |
+| `openapi`  | OpenAPI/Swagger specifications             | `.yaml`, `.json` |
 
 ## Source Types
 
-| Type     | Description                  |
-| -------- | ---------------------------- |
-| `github` | Fetch from GitHub repository |
-| `local`   | Local file path              |
-| `url`     | Remote URL                   |
+| Type      | Description                           |
+| --------- | ------------------------------------- |
+| `github`  | Fetch from GitHub repository          |
+| `gitlab`  | Fetch from GitLab (or self-hosted)    |
+| `local`   | Local file path                       |
+| `url`     | Remote URL                            |
 | `website` | Crawl a docs website (sitemap or BFS) |
 
 ## Project Structure
@@ -134,16 +135,16 @@ npm run deploy
 
 ## Scripts
 
-| Script                               | Description                     |
-| ------------------------------------ | ------------------------------- |
-| `npm run reindex`                    | Index all documentation sources |
-| `npm run reindex:dry`                | Dry run (no uploads)            |
-| `npm run reindex -- --source=<name>` | Index specific source           |
-| `npm run clean:vectors`              | Clear all vectors (asks to confirm) |
+| Script                               | Description                            |
+| ------------------------------------ | -------------------------------------- |
+| `npm run reindex`                    | Index all documentation sources        |
+| `npm run reindex:dry`                | Dry run (no uploads)                   |
+| `npm run reindex -- --source=<name>` | Index specific source                  |
+| `npm run clean:vectors`              | Clear all vectors (asks to confirm)    |
 | `npm run clean:vectors -- --force`   | Clear all vectors without confirmation |
-| `npm run typecheck`                  | TypeScript type checking        |
-| `npm test`                           | Run unit tests (Vitest)         |
-| `npm run test:watch`                 | Run unit tests in watch mode    |
+| `npm run typecheck`                  | TypeScript type checking               |
+| `npm test`                           | Run unit tests (Vitest)                |
+| `npm run test:watch`                 | Run unit tests in watch mode           |
 
 ## Testing
 
