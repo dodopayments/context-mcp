@@ -14,7 +14,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean:vectors": "tsx scripts/clean-vectors.ts",
-    "index:txt": "tsx scripts/index-to-txt.ts"
+    "index:txt": "tsx scripts/index-to-txt.ts",
+    "validate": "tsx scripts/validate.ts",
+    "doctor": "tsx scripts/doctor.ts"
   },
   "keywords": [
     "mcp",
@@ -28,14 +30,17 @@
     "@pinecone-database/pinecone": "^6.1.3",
     "dotenv": "^17.2.3",
     "gray-matter": "^4.0.3",
+    "node-html-parser": "^7.1.0",
     "openai": "^6.9.1",
     "tiktoken": "^1.0.22",
+    "turndown": "^7.2.4",
     "yaml": "^2.8.2",
     "zod": "^4.2.1"
   },
   "devDependencies": {
     "@google/genai": "^1.46.0",
     "@types/node": "^24.10.1",
+    "@types/turndown": "^5.0.6",
     "prettier": "^3.4.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",

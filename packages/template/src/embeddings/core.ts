@@ -63,10 +63,12 @@ export async function generateEmbeddingsOpenAI(
   dimensions?: number
 ): Promise<number[][]> {
   const useDimensions = dimensions !== undefined && openAISupportsDimensions(model);
-  return withRetry(() =>
-    openai.embeddings
-      .create({ model, input: texts, ...(useDimensions ? { dimensions } : {}) })
-      .then(response => response.data.map(e => e.embedding))
+  return withRetry(
+    () =>
+      openai.embeddings
+        .create({ model, input: texts, ...(useDimensions ? { dimensions } : {}) })
+        .then(response => response.data.map(e => e.embedding)),
+    { label: 'OpenAI embeddings' }
   );
 }
 
@@ -80,17 +82,19 @@ export async function generateEmbeddingsGemini(
   texts: string[],
   dimensions: number
 ): Promise<number[][]> {
-  return withRetry(() =>
-    gemini.models
-      .embedContent({
-        model,
-        contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
-        config: {
-          taskType: 'RETRIEVAL_DOCUMENT' as const,
-          outputDimensionality: dimensions,
-        },
-      })
-      .then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+  return withRetry(
+    () =>
+      gemini.models
+        .embedContent({
+          model,
+          contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+          config: {
+            taskType: 'RETRIEVAL_DOCUMENT' as const,
+            outputDimensionality: dimensions,
+          },
+        })
+        .then(response => (response.embeddings ?? []).map(e => e.values ?? [])),
+    { label: 'Gemini embeddings' }
   );
 }
 
@@ -322,23 +326,156 @@ export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Network error codes that are safe to retry (transient connectivity issues).
+// Note: ENOTFOUND (hard NXDOMAIN) is intentionally excluded — it's almost
+// always a permanent misconfiguration, so retrying only adds latency. The
+// transient DNS failure worth retrying is EAI_AGAIN.
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
 /**
- * Retry an async operation with exponential backoff on 429 rate-limit errors.
+ * Extract an HTTP status code from a variety of error shapes
+ * (OpenAI/Gemini SDK errors, fetch Response-like errors, plain objects).
+ */
+function getErrorStatus(err: unknown): number | undefined {
+  const e = err as { status?: number; statusCode?: number; response?: { status?: number } };
+  return e?.status ?? e?.statusCode ?? e?.response?.status;
+}
+
+/**
+ * Extract a network error code (e.g. ECONNRESET) from an error or its cause.
+ */
+function getErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code ?? e?.cause?.code;
+}
+
+/**
+ * Decide whether an error is worth retrying: rate limits (429), transient
+ * server errors (5xx), request timeouts (408), and network-level failures.
+ */
+export function isRetryableError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 429 || status === 408) return true;
+  if (status !== undefined && status >= 500 && status <= 599) return true;
+
+  const code = getErrorCode(err);
+  if (code && RETRYABLE_NETWORK_CODES.has(code)) return true;
+
+  // Defense-in-depth: a bare timeout/abort can reach here as an AbortError
+  // (DOMException, numeric code 20) if it wasn't translated to a TimeoutError.
+  // Treat it as a transient timeout rather than a permanent failure.
+  if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Retry predicate for Pinecone upsert. The SDK already retries 5xx internally,
+ * but not connection-level failures (PineconeConnectionError) — the transient
+ * blip worth retrying during a long reindex. Matched by name since the SDK
+ * doesn't export the class. Falls back to isRetryableError for raw errors.
+ */
+export function isRetryableUpsertError(err: unknown): boolean {
+  if (err instanceof Error && err.name === 'PineconeConnectionError') return true;
+  return isRetryableError(err);
+}
+
+/**
+ * Honour a Retry-After header (seconds or HTTP-date) if present on the error.
+ * Returns a delay in ms, or undefined if not present/parseable.
+ */
+export function retryAfterMs(err: unknown): number | undefined {
+  const headers = (err as { headers?: Record<string, string> | Headers })?.headers;
+  if (!headers) return undefined;
+  const raw =
+    typeof (headers as Headers).get === 'function'
+      ? (headers as Headers).get('retry-after')
+      : (headers as Record<string, string>)['retry-after'];
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
+
+  // Numeric form: delta-seconds. Use a strict check so whitespace/empty
+  // strings (which `Number()` coerces to 0) don't yield a bogus 0ms delay.
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+
+  const asDate = Date.parse(trimmed);
+  if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
+
+  return undefined;
+}
+
+export interface RetryOptions {
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  /** Custom predicate; defaults to isRetryableError. */
+  shouldRetry?: (err: unknown) => boolean;
+  /** Label used in log output. */
+  label?: string;
+}
+
+/**
+ * Retry an async operation with exponential backoff + jitter.
+ *
+ * Retries on rate limits (429), request timeout (408), transient server
+ * errors (5xx) and network failures (ECONNRESET, ETIMEDOUT, ...). Honours a
+ * Retry-After header when the server provides one.
+ *
+ * Backwards compatible: still callable as withRetry(fn, maxAttempts, baseDelayMs).
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  maxAttempts = 5,
-  baseDelayMs = 2000
+  optionsOrMaxAttempts: number | RetryOptions = {},
+  baseDelayMsArg = 2000
 ): Promise<T> {
+  const options: RetryOptions =
+    typeof optionsOrMaxAttempts === 'number'
+      ? { maxAttempts: optionsOrMaxAttempts, baseDelayMs: baseDelayMsArg }
+      : optionsOrMaxAttempts;
+
+  // Sanitise maxAttempts: a non-positive / non-finite value (e.g. 0, -1, NaN
+  // from bad config or an unparsed env var) must never short-circuit the loop
+  // and throw a bogus "exhausted attempts" without ever running the operation.
+  // Always make at least one attempt.
+  const rawMaxAttempts = options.maxAttempts ?? 5;
+  const maxAttempts =
+    Number.isFinite(rawMaxAttempts) && rawMaxAttempts >= 1 ? Math.floor(rawMaxAttempts) : 1;
+  const baseDelayMs = options.baseDelayMs ?? 2000;
+  const maxDelayMs = options.maxDelayMs ?? 60000;
+  const shouldRetry = options.shouldRetry ?? isRetryableError;
+  const label = options.label ?? 'Request';
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err: unknown) {
-      const status = (err as { status?: number })?.status;
-      if (status !== 429 || attempt === maxAttempts) throw err;
-      const delay = baseDelayMs * 2 ** (attempt - 1);
+      if (!shouldRetry(err) || attempt === maxAttempts) throw err;
+
+      // Prefer server-provided Retry-After, else exponential backoff with jitter.
+      // Either way the delay is clamped to maxDelayMs: a hostile or buggy server
+      // can legally send `Retry-After: 86400` (24h), and we must not hang the
+      // whole indexing run on it.
+      const backoff = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
+      const jitter = Math.floor(Math.random() * Math.min(1000, backoff));
+      const serverDelay = retryAfterMs(err);
+      const delay =
+        serverDelay !== undefined ? Math.min(serverDelay, maxDelayMs) : backoff + jitter;
+
+      const reason = getErrorStatus(err) ?? getErrorCode(err) ?? 'error';
       console.log(
-        `\n   ⏳ Rate limited, retrying in ${delay / 1000}s (attempt ${attempt}/${maxAttempts})...`
+        `\n   ⏳ ${label} failed (${reason}), retrying in ${(delay / 1000).toFixed(1)}s ` +
+          `(attempt ${attempt}/${maxAttempts})...`
       );
       await sleep(delay);
     }
