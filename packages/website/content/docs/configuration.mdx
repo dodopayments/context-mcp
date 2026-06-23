@@ -60,9 +60,10 @@ reindex:
 
 ## Vector Database
 
-Currently supports Pinecone. Your embeddings are stored here.
+Supports **Pinecone** and **Qdrant**. Your embeddings are stored here.
 
 ```yaml
+# Pinecone (managed)
 vectordb:
   provider: pinecone
   indexName: my-docs # Your Pinecone index name
@@ -71,6 +72,20 @@ vectordb:
     cloud: aws # aws or gcp
     region: us-east-1 # Your Pinecone region
 ```
+
+```yaml
+# Qdrant (self-hosted or Qdrant Cloud)
+vectordb:
+  provider: qdrant
+  indexName: my-docs # Used as the Qdrant collection name
+  qdrant:
+    url: http://localhost:6333 # or set QDRANT_URL env var
+```
+
+| Provider   | Required env vars                            |
+| ---------- | -------------------------------------------- |
+| `pinecone` | `PINECONE_API_KEY`                           |
+| `qdrant`   | `QDRANT_URL` (or config), `QDRANT_API_KEY` (cloud only) |
 
 ## Embeddings
 
