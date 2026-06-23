@@ -30,6 +30,8 @@ import {
   chunkToRecord,
   prepareChunkForEmbedding,
   sleep,
+  withRetry,
+  isRetryableUpsertError,
 } from '../src/embeddings/core.js';
 import {
   validateEmbeddingEnv,
@@ -137,8 +139,13 @@ async function embedAndUpload(
     // Convert to embedding records
     const records = batch.map((chunk, idx) => chunkToRecord(chunk, embeddings[idx]));
 
-    // Upsert to the configured vector store (Pinecone, Qdrant, ...)
-    await store.upsert(records);
+    // Upsert to the configured vector store (Pinecone, Qdrant, ...).
+    // Retry connection-level upsert failures (SDK handles 5xx, not these);
+    // upsert is idempotent by id, so retrying is safe.
+    await withRetry(() => store.upsert(records), {
+      label: 'Vector store upsert',
+      shouldRetry: isRetryableUpsertError,
+    });
 
     uploaded += batch.length;
     const percent = Math.round((uploaded / total) * 100);

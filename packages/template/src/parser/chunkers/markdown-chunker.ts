@@ -442,7 +442,7 @@ function parseMigration(
   }));
 }
 
-function parseMarkdownFile(
+export function parseMarkdownFile(
   content: string,
   sourceUrl: string,
   contextName: string,
