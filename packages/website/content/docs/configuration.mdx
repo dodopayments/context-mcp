@@ -155,7 +155,7 @@ sources:
     repository: owner/repo # GitHub repo
     branch: main # Optional, defaults to main
     path: docs/ # Optional, subdirectory
-    parser: mdx # mdx, markdown, or openapi
+    parser: mdx # mdx, markdown, openapi, or html
     baseUrl: https://docs.example.com
     skipDirs:
       - node_modules
@@ -165,6 +165,24 @@ sources:
       - CHANGELOG.md
 ```
 
+### GitLab Repository
+
+Clone from gitlab.com or a self-hosted GitLab instance. Set `GITLAB_TOKEN` for
+private projects.
+
+```yaml
+sources:
+  - name: docs
+    displayName: "My Docs"
+    type: gitlab
+    repository: mygroup/mysubgroup/docs # group(s)/project
+    branch: main
+    path: docs/ # optional subdirectory
+    parser: mdx
+    baseUrl: https://docs.example.com
+    gitlabHost: gitlab.example.com # optional, defaults to gitlab.com
+```
+
 ### Parser Types
 
 | Parser     | Use For                 | Features                                    |
@@ -172,6 +190,7 @@ sources:
 | `mdx`      | MDX/Markdown docs       | Extracts frontmatter, preserves code blocks |
 | `markdown` | Plain markdown, READMEs | Simple parsing, language hints              |
 | `openapi`  | Swagger/OpenAPI specs   | Generates docs from API definitions         |
+| `html`     | Raw `.html`/`.htm` docs | Strips boilerplate, converts to Markdown    |
 
 ### Language Hints
 

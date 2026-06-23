@@ -109,10 +109,12 @@ export async function generateEmbeddingsOpenAI(
   dimensions?: number
 ): Promise<number[][]> {
   const useDimensions = dimensions !== undefined && openAISupportsDimensions(model);
-  return withRetry(() =>
-    openai.embeddings
-      .create({ model, input: texts, ...(useDimensions ? { dimensions } : {}) })
-      .then(response => response.data.map(e => e.embedding))
+  return withRetry(
+    () =>
+      openai.embeddings
+        .create({ model, input: texts, ...(useDimensions ? { dimensions } : {}) })
+        .then(response => response.data.map(e => e.embedding)),
+    { label: 'OpenAI embeddings' }
   );
 }
 
@@ -126,17 +128,19 @@ export async function generateEmbeddingsGemini(
   texts: string[],
   dimensions: number
 ): Promise<number[][]> {
-  return withRetry(() =>
-    gemini.models
-      .embedContent({
-        model,
-        contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
-        config: {
-          taskType: 'RETRIEVAL_DOCUMENT' as const,
-          outputDimensionality: dimensions,
-        },
-      })
-      .then(response => (response.embeddings ?? []).map(e => e.values ?? []))
+  return withRetry(
+    () =>
+      gemini.models
+        .embedContent({
+          model,
+          contents: texts.map(t => ({ parts: [{ text: t }], role: 'user' })),
+          config: {
+            taskType: 'RETRIEVAL_DOCUMENT' as const,
+            outputDimensionality: dimensions,
+          },
+        })
+        .then(response => (response.embeddings ?? []).map(e => e.values ?? [])),
+    { label: 'Gemini embeddings' }
   );
 }
 
@@ -232,7 +236,6 @@ export async function generateEmbeddingsVoyage(
     { label: 'Voyage embed' }
   );
 }
-
 // =============================================================================
 // PINECONE FUNCTIONS
 // =============================================================================
@@ -439,11 +442,13 @@ export function sleep(ms: number): Promise<void> {
 }
 
 // Network error codes that are safe to retry (transient connectivity issues).
+// Note: ENOTFOUND (hard NXDOMAIN) is intentionally excluded — it's almost
+// always a permanent misconfiguration, so retrying only adds latency. The
+// transient DNS failure worth retrying is EAI_AGAIN.
 const RETRYABLE_NETWORK_CODES = new Set([
   'ECONNRESET',
   'ECONNREFUSED',
   'ETIMEDOUT',
-  'ENOTFOUND',
   'EAI_AGAIN',
   'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT',
@@ -480,26 +485,46 @@ export function isRetryableError(err: unknown): boolean {
   const code = getErrorCode(err);
   if (code && RETRYABLE_NETWORK_CODES.has(code)) return true;
 
+  // Defense-in-depth: a bare timeout/abort can reach here as an AbortError
+  // (DOMException, numeric code 20) if it wasn't translated to a TimeoutError.
+  // Treat it as a transient timeout rather than a permanent failure.
+  if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+    return true;
+  }
+
   return false;
+}
+
+/**
+ * Retry predicate for Pinecone upsert. The SDK already retries 5xx internally,
+ * but not connection-level failures (PineconeConnectionError) — the transient
+ * blip worth retrying during a long reindex. Matched by name since the SDK
+ * doesn't export the class. Falls back to isRetryableError for raw errors.
+ */
+export function isRetryableUpsertError(err: unknown): boolean {
+  if (err instanceof Error && err.name === 'PineconeConnectionError') return true;
+  return isRetryableError(err);
 }
 
 /**
  * Honour a Retry-After header (seconds or HTTP-date) if present on the error.
  * Returns a delay in ms, or undefined if not present/parseable.
  */
-function retryAfterMs(err: unknown): number | undefined {
+export function retryAfterMs(err: unknown): number | undefined {
   const headers = (err as { headers?: Record<string, string> | Headers })?.headers;
   if (!headers) return undefined;
   const raw =
     typeof (headers as Headers).get === 'function'
       ? (headers as Headers).get('retry-after')
       : (headers as Record<string, string>)['retry-after'];
-  if (!raw) return undefined;
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
 
-  const asNumber = Number(raw);
-  if (!Number.isNaN(asNumber)) return asNumber * 1000;
+  // Numeric form: delta-seconds. Use a strict check so whitespace/empty
+  // strings (which `Number()` coerces to 0) don't yield a bogus 0ms delay.
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
 
-  const asDate = Date.parse(raw);
+  const asDate = Date.parse(trimmed);
   if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
 
   return undefined;
@@ -534,7 +559,13 @@ export async function withRetry<T>(
       ? { maxAttempts: optionsOrMaxAttempts, baseDelayMs: baseDelayMsArg }
       : optionsOrMaxAttempts;
 
-  const maxAttempts = options.maxAttempts ?? 5;
+  // Sanitise maxAttempts: a non-positive / non-finite value (e.g. 0, -1, NaN
+  // from bad config or an unparsed env var) must never short-circuit the loop
+  // and throw a bogus "exhausted attempts" without ever running the operation.
+  // Always make at least one attempt.
+  const rawMaxAttempts = options.maxAttempts ?? 5;
+  const maxAttempts =
+    Number.isFinite(rawMaxAttempts) && rawMaxAttempts >= 1 ? Math.floor(rawMaxAttempts) : 1;
   const baseDelayMs = options.baseDelayMs ?? 2000;
   const maxDelayMs = options.maxDelayMs ?? 60000;
   const shouldRetry = options.shouldRetry ?? isRetryableError;
@@ -547,9 +578,14 @@ export async function withRetry<T>(
       if (!shouldRetry(err) || attempt === maxAttempts) throw err;
 
       // Prefer server-provided Retry-After, else exponential backoff with jitter.
+      // Either way the delay is clamped to maxDelayMs: a hostile or buggy server
+      // can legally send `Retry-After: 86400` (24h), and we must not hang the
+      // whole indexing run on it.
       const backoff = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
       const jitter = Math.floor(Math.random() * Math.min(1000, backoff));
-      const delay = retryAfterMs(err) ?? backoff + jitter;
+      const serverDelay = retryAfterMs(err);
+      const delay =
+        serverDelay !== undefined ? Math.min(serverDelay, maxDelayMs) : backoff + jitter;
 
       const reason = getErrorStatus(err) ?? getErrorCode(err) ?? 'error';
       console.log(

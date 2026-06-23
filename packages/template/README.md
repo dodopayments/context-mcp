@@ -108,11 +108,12 @@ npm run deploy
 
 ## Source Types
 
-| Type     | Description                  |
-| -------- | ---------------------------- |
-| `github` | Fetch from GitHub repository |
-| `local`  | Local file path              |
-| `url`    | Remote URL                   |
+| Type     | Description                          |
+| -------- | ------------------------------------ |
+| `github` | Fetch from GitHub repository         |
+| `gitlab` | Fetch from GitLab (or self-hosted)   |
+| `local`  | Local file path                      |
+| `url`    | Remote URL                           |
 
 ## Project Structure
 
@@ -138,7 +139,8 @@ npm run deploy
 | `npm run reindex`                    | Index all documentation sources |
 | `npm run reindex:dry`                | Dry run (no uploads)            |
 | `npm run reindex -- --source=<name>` | Index specific source           |
-| `npm run clean:vectors`              | Clear all vectors from Pinecone |
+| `npm run clean:vectors`              | Clear all vectors (asks to confirm) |
+| `npm run clean:vectors -- --force`   | Clear all vectors without confirmation |
 | `npm run typecheck`                  | TypeScript type checking        |
 | `npm test`                           | Run unit tests (Vitest)         |
 | `npm run test:watch`                 | Run unit tests in watch mode    |
