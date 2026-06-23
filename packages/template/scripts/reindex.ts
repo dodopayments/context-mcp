@@ -32,6 +32,8 @@ import {
   chunkToRecord,
   prepareChunkForEmbedding,
   sleep,
+  withRetry,
+  isRetryableUpsertError,
 } from '../src/embeddings/core.js';
 import {
   validateEmbeddingEnv,
@@ -103,6 +105,7 @@ type EmbedClient = {
   provider: 'openai';
   openai: OpenAI;
   model: string;
+  dimensions: number;
 } | {
   provider: 'gemini';
   gemini: GoogleGenAI;
@@ -134,14 +137,18 @@ async function embedAndUpload(
     if (client.provider === 'gemini') {
       embeddings = await generateEmbeddingsGemini(client.gemini, client.model, texts, client.dimensions);
     } else {
-      embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model);
+      embeddings = await generateEmbeddingsOpenAI(client.openai, texts, client.model, client.dimensions);
     }
 
     // Convert to Pinecone records
     const records = batch.map((chunk, idx) => chunkToRecord(chunk, embeddings[idx]));
 
-    // Upsert to Pinecone
-    await index.upsert(records);
+    // Retry connection-level upsert failures (SDK handles 5xx, not these).
+    // upsert is idempotent by id, so retrying is safe.
+    await withRetry(() => index.upsert(records), {
+      label: 'Pinecone upsert',
+      shouldRetry: isRetryableUpsertError,
+    });
 
     uploaded += batch.length;
     const percent = Math.round((uploaded / total) * 100);
@@ -216,6 +223,7 @@ async function reindex(): Promise<void> {
         provider: 'openai',
         openai: new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }),
         model: config.embeddings.model,
+        dimensions: config.embeddings.dimensions,
       };
     }
 
