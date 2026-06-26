@@ -82,6 +82,14 @@ export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
       'gemini-embedding-2-preview': { dimensions: range(1, 3072, 3072) },
     },
   },
+  cohere: {
+    apiKeyEnvVar: 'COHERE_API_KEY',
+    models: {},
+  },
+  voyage: {
+    apiKeyEnvVar: 'VOYAGE_API_KEY',
+    models: {},
+  },
 };
 
 /**

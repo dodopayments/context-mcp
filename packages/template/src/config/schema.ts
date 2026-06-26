@@ -97,7 +97,7 @@ const VectorDbSchema = z.object({
 // accepted. The Zod enum below and the `EmbeddingProvider` union are both
 // derived from it, so the schema (what config.yaml accepts) and the provider
 // registry in `validate-embeddings.ts` can never drift apart.
-export const EMBEDDING_PROVIDER_IDS = ['openai', 'gemini'] as const;
+export const EMBEDDING_PROVIDER_IDS = ['openai', 'gemini', 'cohere', 'voyage'] as const;
 export type EmbeddingProvider = (typeof EMBEDDING_PROVIDER_IDS)[number];
 
 const EmbeddingsSchema = z.object({
