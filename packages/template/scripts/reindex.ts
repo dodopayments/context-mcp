@@ -31,6 +31,7 @@ import {
   generateEmbeddingsGemini,
   generateEmbeddingsCohere,
   generateEmbeddingsVoyage,
+  generateEmbeddingsOllama,
   chunkToRecord,
   prepareChunkForEmbedding,
   sleep,
@@ -126,6 +127,11 @@ type EmbedClient =
       apiKey: string;
       model: string;
       dimensions: number;
+    }
+  | {
+      provider: 'ollama';
+      baseUrl: string;
+      model: string;
     };
 
 async function embedAndUpload(
@@ -173,6 +179,9 @@ async function embedAndUpload(
           texts,
           client.dimensions
         );
+        break;
+      case 'ollama':
+        embeddings = await generateEmbeddingsOllama(client.baseUrl, client.model, texts);
         break;
       case 'openai':
       default:
@@ -279,6 +288,13 @@ async function reindex(): Promise<void> {
           apiKey: process.env.VOYAGE_API_KEY!,
           model: config.embeddings.model,
           dimensions: config.embeddings.dimensions,
+        };
+        break;
+      case 'ollama':
+        embedClient = {
+          provider: 'ollama',
+          baseUrl: config.embeddings.ollama?.baseUrl ?? 'http://localhost:11434',
+          model: config.embeddings.model,
         };
         break;
       default:

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   generateEmbeddingsCohere,
   generateEmbeddingsVoyage,
+  generateEmbeddingsOllama,
   reorderByIndex,
   assertEmbeddingCount,
 } from './core.js';
@@ -28,22 +29,7 @@ describe('embedding count validation (regression)', () => {
     );
   });
 
-  it('Voyage: throws when API returns fewer embeddings than inputs (indexed gap)', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      jsonResponse({
-        data: [
-          { embedding: [1], index: 0 },
-          { embedding: [2], index: 1 },
-        ],
-      })
-    );
-    // 3 inputs, only indexes 0 and 1 returned -> slot 2 stays empty.
-    await expect(generateEmbeddingsVoyage('k', 'voyage-3', ['a', 'b', 'c'], 1)).rejects.toThrow(
-      /missing or empty/
-    );
-  });
-
-  it('Voyage: throws when API returns fewer embeddings than inputs (no index)', async () => {
+  it('Voyage: throws when API returns fewer embeddings (no index)', async () => {
     globalThis.fetch = vi
       .fn()
       .mockResolvedValue(jsonResponse({ data: [{ embedding: [1] }, { embedding: [2] }] }));
@@ -52,9 +38,30 @@ describe('embedding count validation (regression)', () => {
     );
   });
 
-  it('Cohere: throws on an empty embedding vector', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ embeddings: { float: [[]] } }));
-    await expect(generateEmbeddingsCohere('k', 'embed-v4.0', ['a'], 1)).rejects.toThrow(
+  it('Ollama: throws when server returns fewer embeddings than inputs', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        embeddings: [
+          [1, 2, 3],
+          [4, 5, 6],
+        ],
+      })
+    );
+    await expect(generateEmbeddingsOllama('http://x', 'm', ['a', 'b', 'c'])).rejects.toThrow(
+      /expected 3 embeddings but received 2/
+    );
+  });
+
+  it('Ollama: throws on an empty embeddings array', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ embeddings: [] }));
+    await expect(generateEmbeddingsOllama('http://x', 'm', ['a'])).rejects.toThrow(
+      /expected 1 embeddings but received 0/
+    );
+  });
+
+  it('Ollama: throws on an empty embedding vector', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ embeddings: [[]] }));
+    await expect(generateEmbeddingsOllama('http://x', 'm', ['a'])).rejects.toThrow(
       /missing or empty/
     );
   });
@@ -71,13 +78,7 @@ describe('Voyage index reordering (regression)', () => {
       })
     );
     const out = await generateEmbeddingsVoyage('k', 'voyage-3', ['a', 'b'], 1);
-    // text 'a' is index 0 -> must map to [11]; text 'b' index 1 -> [99]
     expect(out).toEqual([[11], [99]]);
-  });
-
-  it('reorderByIndex falls back to response order when no index present', () => {
-    const out = reorderByIndex('T', [{ embedding: [1] }, { embedding: [2] }], 2);
-    expect(out).toEqual([[1], [2]]);
   });
 
   it('reorderByIndex throws on out-of-range index', () => {

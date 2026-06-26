@@ -75,8 +75,9 @@ vectordb:
 ## Embeddings
 
 Configure the model used to generate vector embeddings. ContextMCP supports two
-providers — **OpenAI**, **Google Gemini**, **Cohere**, and **Voyage AI**. Pick
-whichever you prefer; you only need the API key for the provider you choose.
+providers — **OpenAI**, **Google Gemini**, **Cohere**, **Voyage AI**, and
+**Ollama** (local). Pick whichever you prefer; you only need the API key for the
+provider you choose (Ollama needs none).
 
 ### OpenAI (default)
 
@@ -124,6 +125,27 @@ embeddings:
 
 Requires `VOYAGE_API_KEY`.
 
+### Local Embeddings with Ollama
+
+Run embeddings fully offline with a local [Ollama](https://ollama.com) server —
+no API key, no per-token cost.
+
+```yaml
+embeddings:
+  provider: ollama
+  model: nomic-embed-text # or mxbai-embed-large, etc.
+  dimensions: 768 # must match the model's output dimension
+  ollama:
+    baseUrl: http://localhost:11434 # optional, this is the default
+```
+
+Pull the model first: `ollama pull nomic-embed-text`.
+
+> **Worker note:** The Cloudflare worker generates query embeddings at request
+> time, and Workers cannot reach `localhost`. To serve an Ollama-indexed corpus,
+> expose your Ollama server on a reachable URL and set `OLLAMA_BASE_URL` in the
+> worker — or run the self-hosted Node server (see the self-hosting docs).
+
 ### Provider Comparison
 
 | Provider | `model`                      | `dimensions` | Required env var |
@@ -132,6 +154,7 @@ Requires `VOYAGE_API_KEY`.
 | `gemini` | `gemini-embedding-2-preview` | `3072`       | `GEMINI_API_KEY` |
 | `cohere` | `embed-v4.0`                 | `1536`       | `COHERE_API_KEY` |
 | `voyage` | `voyage-3`                   | `1024`       | `VOYAGE_API_KEY` |
+| `ollama` | `nomic-embed-text`           | `768`        | _(none — local)_ |
 
 > **Note:** The `dimensions` value must match the model you choose, and the
 > Pinecone index must be created with the same dimension. If you switch providers
