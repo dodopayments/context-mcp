@@ -35,8 +35,11 @@ export interface ModelSpec {
 }
 
 export interface ProviderSpec {
-  /** Environment variable holding the provider's API key. */
-  apiKeyEnvVar: string;
+  /**
+   * Environment variable holding the provider's API key, or `null` for keyless
+   * providers (e.g. a local Ollama server) that require no API key at all.
+   */
+  apiKeyEnvVar: string | null;
   /** Known models keyed by model id. */
   models: Record<string, ModelSpec>;
 }
@@ -88,6 +91,11 @@ export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
   },
   voyage: {
     apiKeyEnvVar: 'VOYAGE_API_KEY',
+    models: {},
+  },
+  // Ollama runs against a local server and requires no API key.
+  ollama: {
+    apiKeyEnvVar: null,
     models: {},
   },
 };
@@ -178,8 +186,9 @@ export function validateEmbeddingConfig(
     }
   }
 
-  // 3. Optional env-var presence check.
-  if (options.checkEnv) {
+  // 3. Optional env-var presence check. Keyless providers (apiKeyEnvVar
+  //    === null, e.g. a local Ollama server) have nothing to check.
+  if (options.checkEnv && providerSpec.apiKeyEnvVar) {
     const env = options.env ?? process.env;
     if (!env[providerSpec.apiKeyEnvVar]) {
       errors.push(

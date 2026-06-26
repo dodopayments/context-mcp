@@ -19,6 +19,7 @@ export function validateEnv(required: string[]): void {
 
 /**
  * Map an embedding provider to its required API key environment variable.
+ * Providers that need no API key (e.g. local Ollama) are absent from this map.
  */
 export const PROVIDER_API_KEY_ENV: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
@@ -27,13 +28,15 @@ export const PROVIDER_API_KEY_ENV: Record<string, string> = {
   voyage: 'VOYAGE_API_KEY',
 };
 
-export type EmbeddingProviderName = 'openai' | 'gemini' | 'cohere' | 'voyage';
+export type EmbeddingProviderName = 'openai' | 'gemini' | 'cohere' | 'voyage' | 'ollama';
 
 /**
  * Validate embedding-related environment variables
  */
 export function validateEmbeddingEnv(provider: EmbeddingProviderName = 'openai'): void {
-  const apiKeyVar = PROVIDER_API_KEY_ENV[provider] ?? 'OPENAI_API_KEY';
-  validateEnv([apiKeyVar, 'PINECONE_API_KEY']);
+  // Ollama runs locally and needs no API key.
+  const apiKeyVar = PROVIDER_API_KEY_ENV[provider];
+  const required = apiKeyVar ? [apiKeyVar, 'PINECONE_API_KEY'] : ['PINECONE_API_KEY'];
+  validateEnv(required);
 }
 
