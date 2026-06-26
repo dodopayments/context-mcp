@@ -78,9 +78,9 @@ When you run `contextmcp init`, you get a complete project structure:
 ```
 my-docs-mcp/
 ├── src/
-│   ├── parser/           # Document parsers (MDX, Markdown, OpenAPI)
-│   ├── embeddings/       # OpenAI embedding generation
-│   ├── sources/          # Source fetchers (GitHub, local, URL)
+│   ├── parser/           # Document parsers (MDX, Markdown, OpenAPI, HTML)
+│   ├── embeddings/       # Embedding generation (OpenAI, Gemini, Cohere, Voyage, Ollama)
+│   ├── sources/          # Source fetchers (GitHub, GitLab, local, URL)
 │   ├── config/           # Config schema and loader
 │   └── types/            # TypeScript types
 ├── cloudflare-worker/    # MCP server deployment
@@ -103,14 +103,14 @@ my-docs-mcp/
 
 - **Node.js 18+** is required
 - **Pinecone account** for vector storage
-- **OpenAI API key** for embeddings
+- **An embedding provider** - OpenAI, Gemini, Cohere, or Voyage API key, or a local [Ollama](https://ollama.com) server (no key)
 - **Cloudflare account** for deployment (optional, for MCP server)
 
 ## How It Works
 
 1. **Parse** - Extract content from your docs, APIs, and READMEs
 2. **Chunk** - Split into semantic chunks optimized for search
-3. **Embed** - Generate embeddings using OpenAI
+3. **Embed** - Generate embeddings (OpenAI, Gemini, Cohere, Voyage, or local Ollama)
 4. **Store** - Upload to Pinecone vector database
 5. **Search** - Query via MCP from AI assistants
 
