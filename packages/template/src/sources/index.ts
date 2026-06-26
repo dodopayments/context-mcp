@@ -10,6 +10,7 @@ import { fetchGitHubSource, type FetchedSource } from './github.js';
 import { fetchGitLabSource } from './gitlab.js';
 import { fetchLocalSource } from './local.js';
 import { fetchURLSource } from './url.js';
+import { fetchWebsiteSource } from './website.js';
 
 // Re-export types
 export type { FetchedSource };
@@ -37,6 +38,9 @@ export async function fetchSource(source: SourceConfig): Promise<FetchedSource |
 
     case 'url':
       return fetchURLSource(source);
+
+    case 'website':
+      return fetchWebsiteSource(source);
 
     default:
       throw new Error(`Unknown source type: ${(source as SourceConfig).type}`);

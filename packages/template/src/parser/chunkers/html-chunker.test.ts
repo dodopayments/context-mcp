@@ -228,3 +228,56 @@ describe('parseHTMLSource resilience (adversarial)', () => {
     expect(paths.size).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('parseHTMLSource sourceUrl resolution', () => {
+  // Richer than SAMPLE so the markdown chunker reliably emits at least one chunk.
+  const PAGE = `<!DOCTYPE html><html><head><title>Getting Started</title></head>
+    <body><main>
+      <h2>Install</h2>
+      <p>Run npm install to begin. This is a longer paragraph of documentation
+      content so the chunker has enough text to emit at least one chunk during
+      this test. It describes the installation flow in some detail.</p>
+      <pre><code>const x = 1;</code></pre>
+    </main></body></html>`;
+  const tmpDirs: string[] = [];
+
+  afterEach(() => {
+    for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  function stage(files: Record<string, string>): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'html-chunker-'));
+    tmpDirs.push(dir);
+    for (const [rel, content] of Object.entries(files)) {
+      const full = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content);
+    }
+    return dir;
+  }
+
+  const source = (extra: Partial<SourceConfig> = {}): SourceConfig =>
+    ({ name: 'docs', type: 'website', parser: 'html', ...extra }) as SourceConfig;
+
+  it('uses the crawler URL map (preserving query strings, no spurious .html)', () => {
+    const dir = stage({
+      'docs/intro.html': PAGE,
+      '.url-map.json': JSON.stringify({
+        'docs/intro.html': 'https://docs.example.com/docs/intro?v=2',
+      }),
+    });
+
+    const chunks = parseHTMLSource(source(), dir);
+    expect(chunks.length).toBeGreaterThan(0);
+    // Exact crawler URL — not the 404-y reconstruction.
+    expect(chunks[0].metadata.sourceUrl).toBe('https://docs.example.com/docs/intro?v=2');
+    expect(chunks.every(c => !c.metadata.sourceUrl?.endsWith('/docs/intro.html'))).toBe(true);
+  });
+
+  it('falls back to baseUrl reconstruction when no URL map is present', () => {
+    const dir = stage({ 'guide.html': PAGE });
+    const chunks = parseHTMLSource(source({ baseUrl: 'https://d.example.com' }), dir);
+    expect(chunks.length).toBeGreaterThan(0);
+    expect(chunks[0].metadata.sourceUrl).toBe('https://d.example.com/guide.html');
+  });
+});
