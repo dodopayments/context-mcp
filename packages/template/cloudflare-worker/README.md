@@ -14,7 +14,7 @@ A remote MCP (Model Context Protocol) server deployed on Cloudflare Workers with
 - [Node.js](https://nodejs.org/) 18+
 - [Cloudflare account](https://dash.cloudflare.com/sign-up)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
-- OpenAI API key (for embeddings)
+- An embedding provider key — OpenAI, Gemini, Cohere, or Voyage (or an `ollama` host reachable from the Worker)
 - Pinecone API key (for vector search)
 
 ## Setup
@@ -30,7 +30,9 @@ npm install
 Set the required secrets using Wrangler:
 
 ```bash
-# OpenAI API key for generating embeddings
+# Embedding provider key — use the secret matching EMBEDDING_PROVIDER in
+# wrangler.jsonc: OPENAI_API_KEY / GEMINI_API_KEY / COHERE_API_KEY / VOYAGE_API_KEY.
+# (ollama needs no key — set OLLAMA_BASE_URL in wrangler.jsonc instead.)
 npx wrangler secret put OPENAI_API_KEY
 
 # Pinecone API key for vector search
@@ -41,14 +43,15 @@ npx wrangler secret put PINECONE_API_KEY
 
 Configure these variables in `wrangler.jsonc`:
 
-| Variable              | Default                   | Description                      |
-| --------------------- | ------------------------- | -------------------------------- |
-| `SERVER_NAME`         | `my-docs-mcp`             | Name of your MCP server          |
-| `SERVER_DESCRIPTION`  | `Search documentation...` | Description shown to clients     |
-| `PINECONE_INDEX_NAME` | `my-docs-mcp`             | Pinecone index name              |
-| `EMBEDDING_MODEL`     | `text-embedding-3-large`  | OpenAI embedding model           |
-| `DEFAULT_TOP_K`       | `10`                      | Default number of search results |
-| `MAX_TOP_K`           | `20`                      | Maximum allowed results          |
+| Variable              | Default                   | Description                                          |
+| --------------------- | ------------------------- | ---------------------------------------------------- |
+| `SERVER_NAME`         | `my-docs-mcp`             | Name of your MCP server                              |
+| `SERVER_DESCRIPTION`  | `Search documentation...` | Description shown to clients                         |
+| `PINECONE_INDEX_NAME` | `my-docs-mcp`             | Pinecone index name                                  |
+| `EMBEDDING_PROVIDER`  | `openai`                  | `openai` / `gemini` / `cohere` / `voyage` / `ollama` |
+| `EMBEDDING_MODEL`     | `text-embedding-3-large`  | Embedding model for the chosen provider              |
+| `DEFAULT_TOP_K`       | `10`                      | Default number of search results                     |
+| `MAX_TOP_K`           | `20`                      | Maximum allowed results                              |
 
 #### Reranking Configuration
 

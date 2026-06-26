@@ -25,10 +25,10 @@ ContextMCP follows a simple workflow:
 
 The system:
 
-- Fetches documentation from GitHub, local files, or URLs
-- Parses MDX, Markdown, or OpenAPI formats
+- Fetches documentation from GitHub, GitLab, local files, or URLs
+- Parses MDX, Markdown, OpenAPI, or HTML formats
 - Chunks content intelligently for optimal retrieval
-- Generates embeddings using OpenAI
+- Generates embeddings with OpenAI, Gemini, Cohere, Voyage, or local Ollama
 - Stores vectors in Pinecone for fast semantic search
 - Serves results via MCP protocol and REST API
 
@@ -36,12 +36,12 @@ The system:
 
 ```
 ┌─────────────┐
-│   Sources   │  GitHub, Local, URL
+│   Sources   │  GitHub, GitLab, Local, URL
 └──────┬──────┘
        │
        ▼
 ┌─────────────┐
-│   Parsers   │  MDX, Markdown, OpenAPI
+│   Parsers   │  MDX, Markdown, OpenAPI, HTML
 └──────┬──────┘
        │
        ▼
@@ -51,7 +51,7 @@ The system:
        │
        ▼
 ┌─────────────┐
-│ Embeddings  │  OpenAI text-embedding-3-large
+│ Embeddings  │  OpenAI, Gemini, Cohere, Voyage, or Ollama
 └──────┬──────┘
        │
        ▼
