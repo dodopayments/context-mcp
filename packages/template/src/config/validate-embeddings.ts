@@ -87,13 +87,28 @@ export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
   },
   cohere: {
     apiKeyEnvVar: 'COHERE_API_KEY',
-    models: {},
+    models: {
+      'embed-v4.0': { dimensions: fixed([256, 512, 1024, 1536], 1536) },
+      'embed-english-v3.0': { dimensions: fixed([1024], 1024) },
+      'embed-english-light-v3.0': { dimensions: fixed([384], 384) },
+      'embed-multilingual-v3.0': { dimensions: fixed([1024], 1024) },
+      'embed-multilingual-light-v3.0': { dimensions: fixed([384], 384) },
+    },
   },
   voyage: {
     apiKeyEnvVar: 'VOYAGE_API_KEY',
-    models: {},
+    models: {
+      'voyage-4-large': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-4': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-4-lite': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-code-3': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3.5': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3.5-lite': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3-large': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3': { dimensions: fixed([1024], 1024) },
+    },
   },
-  // Ollama runs against a local server and requires no API key.
+  // Open model ecosystem (keyless, local) — no static registry; dimension trusted.
   ollama: {
     apiKeyEnvVar: null,
     models: {},
