@@ -104,6 +104,21 @@ function buildHeading(section: FlatSection, contextName: string): string {
 }
 
 // =============================================================================
+// CANONICAL URL EXTRACTION
+// =============================================================================
+
+// Matches an llms.txt-style canonical URL marker at the start of a line, e.g.
+// `URL: https://x/y`, `**URL**: https://x/y`, or `- **URL**: https://x/y`.
+const CANONICAL_URL_MARKER =
+  /^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?URL(?:\*\*)?[ \t]*:[ \t]*(https?:\/\/[^\s)]+)/im;
+
+export function extractCanonicalUrl(content: string): string | undefined {
+  const match = content.match(CANONICAL_URL_MARKER);
+  if (!match) return undefined;
+  return match[1].replace(/[.,;]+$/, '');
+}
+
+// =============================================================================
 // LARGE SECTION SPLITTING
 // =============================================================================
 
@@ -179,7 +194,7 @@ function parseReadme(
     content: section.content,
     metadata: {
       description: extractDescription(section.content),
-      sourceUrl,
+      sourceUrl: extractCanonicalUrl(section.content) ?? sourceUrl,
       repository: contextName,
       language,
     },
@@ -492,12 +507,17 @@ export function parseMarkdownSource(
     const fullPath = path.join(localPath, file);
     const content = fs.readFileSync(fullPath, 'utf-8');
 
-    // Build source URL
+    // Build the file-level source URL used when a chunk has no canonical URL
+    // marker. For url sources `file` is a synthetic local name (URL basename or
+    // saveAs), so fall back to the baseUrl root rather than appending it.
+    const baseUrl = source.baseUrl?.replace(/\/$/, '');
     const sourceUrl = source.repository
       ? `https://github.com/${source.repository}/blob/main/${file}`
-      : source.baseUrl
-      ? `${source.baseUrl.replace(/\/$/, '')}/${file}`
-      : '';
+      : source.type === 'url'
+        ? (baseUrl ?? '')
+        : baseUrl
+          ? `${baseUrl}/${file}`
+          : '';
 
     // Determine contextual name
     const dirName = path.dirname(file);

@@ -29,7 +29,10 @@ const TEMP_DIR = path.join(process.cwd(), '.temp-repos');
  */
 export function resolveUrlFilename(url: string, saveAs?: string): string {
   if (saveAs !== undefined) {
-    if (saveAs.includes('/') || saveAs.includes('\\') || saveAs.includes('..')) {
+    if (saveAs.trim() === '') {
+      throw new Error(`Invalid 'saveAs' value: must not be empty`);
+    }
+    if (saveAs.includes('/') || saveAs.includes('\\') || saveAs === '.' || saveAs === '..') {
       throw new Error(
         `Invalid 'saveAs' value '${saveAs}': must be a bare filename without path separators`
       );

@@ -23,5 +23,17 @@ describe('resolveUrlFilename', () => {
     expect(() => resolveUrlFilename(url, '../escape.md')).toThrow(/must be a bare filename/);
     expect(() => resolveUrlFilename(url, 'sub/dir.md')).toThrow(/must be a bare filename/);
     expect(() => resolveUrlFilename(url, 'a\\b.md')).toThrow(/must be a bare filename/);
+    expect(() => resolveUrlFilename(url, '.')).toThrow(/must be a bare filename/);
+    expect(() => resolveUrlFilename(url, '..')).toThrow(/must be a bare filename/);
+  });
+
+  it('rejects an empty or whitespace-only saveAs', () => {
+    const url = 'https://example.com/x.txt';
+    expect(() => resolveUrlFilename(url, '')).toThrow(/must not be empty/);
+    expect(() => resolveUrlFilename(url, '   ')).toThrow(/must not be empty/);
+  });
+
+  it('allows consecutive dots inside an otherwise-bare filename', () => {
+    expect(resolveUrlFilename('https://example.com/x.txt', 'llms..full.md')).toBe('llms..full.md');
   });
 });
