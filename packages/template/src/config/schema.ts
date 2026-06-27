@@ -31,6 +31,11 @@ export const SourceSchema = z
     // URL sources
     url: z.string().url().optional(),
 
+    // URL sources: bare filename to save fetched content under (no path separators).
+    // Parsers select files by extension, so set this when the URL's extension
+    // doesn't match the parser (e.g. save a Markdown doc served at `.txt` as `.md`).
+    saveAs: z.string().optional(),
+
     // Local sources
     localPath: z.string().optional(),
 

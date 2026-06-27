@@ -115,6 +115,20 @@ sources:
       - node_modules
 
   # =============================================================================
+  # MARKETING WEBSITE (curated llms-full.txt AI reference)
+  # =============================================================================
+  # The website publishes a hand-curated AI reference at /llms-full.txt covering
+  # products, pricing, comparisons, case studies, and company info. It's served
+  # as text/plain, so saveAs gives it a .md extension for the markdown parser.
+  - name: dodo-website
+    displayName: 'Dodo Payments Website'
+    type: url
+    url: https://dodopayments.com/llms-full.txt
+    saveAs: llms-full.md
+    parser: markdown
+    baseUrl: https://dodopayments.com
+
+  # =============================================================================
   # SDK REPOSITORIES (Plain Markdown)
   # =============================================================================
   - name: sdk-typescript
