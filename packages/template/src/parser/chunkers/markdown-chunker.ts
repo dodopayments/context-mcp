@@ -118,6 +118,28 @@ export function extractCanonicalUrl(content: string): string | undefined {
   return match[1].replace(/[.,;]+$/, '');
 }
 
+function stripDocExtension(file: string): string {
+  return file.replace(/\.(?:md|mdx|txt)$/i, '');
+}
+
+// File-level source URL used when a chunk has no inline canonical URL marker.
+// followLinks pages mirror their URL path on disk, so map the file back to its
+// page URL; a plain url source is one synthetic file, so use the site root
+// rather than that filename.
+export function buildFileSourceUrl(source: SourceConfig, file: string): string {
+  const baseUrl = source.baseUrl?.replace(/\/$/, '');
+  if (source.repository) {
+    return `https://github.com/${source.repository}/blob/main/${file}`;
+  }
+  if (source.type === 'url') {
+    if (source.followLinks) {
+      return baseUrl ? `${baseUrl}/${stripDocExtension(file)}` : '';
+    }
+    return baseUrl ?? '';
+  }
+  return baseUrl ? `${baseUrl}/${file}` : '';
+}
+
 // =============================================================================
 // LARGE SECTION SPLITTING
 // =============================================================================
@@ -507,17 +529,7 @@ export function parseMarkdownSource(
     const fullPath = path.join(localPath, file);
     const content = fs.readFileSync(fullPath, 'utf-8');
 
-    // Build the file-level source URL used when a chunk has no canonical URL
-    // marker. For url sources `file` is a synthetic local name (URL basename or
-    // saveAs), so fall back to the baseUrl root rather than appending it.
-    const baseUrl = source.baseUrl?.replace(/\/$/, '');
-    const sourceUrl = source.repository
-      ? `https://github.com/${source.repository}/blob/main/${file}`
-      : source.type === 'url'
-        ? (baseUrl ?? '')
-        : baseUrl
-          ? `${baseUrl}/${file}`
-          : '';
+    const sourceUrl = buildFileSourceUrl(source, file);
 
     // Determine contextual name
     const dirName = path.dirname(file);

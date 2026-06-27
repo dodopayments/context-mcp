@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { extractCanonicalUrl, parseMarkdownFile } from './markdown-chunker.js';
+import { extractCanonicalUrl, parseMarkdownFile, buildFileSourceUrl } from './markdown-chunker.js';
+import type { SourceConfig } from '../../config/schema.js';
+
+function source(partial: Partial<SourceConfig>): SourceConfig {
+  return partial as SourceConfig;
+}
 
 describe('extractCanonicalUrl', () => {
   it('extracts a plain URL: marker', () => {
@@ -35,5 +40,31 @@ describe('parseMarkdownFile canonical URL wiring', () => {
     const chunks = parseMarkdownFile(content, 'https://fallback.example', 'Test', 'llms-full.md');
     expect(chunks.length).toBeGreaterThan(0);
     expect(chunks.every(c => c.metadata.sourceUrl === 'https://fallback.example')).toBe(true);
+  });
+});
+
+describe('buildFileSourceUrl', () => {
+  it('maps a followLinks page file back to its canonical page URL (no extension)', () => {
+    const src = source({
+      type: 'url',
+      baseUrl: 'https://dodopayments.com',
+      followLinks: { hostAllowlist: ['dodopayments.com'], appendExtension: '.md', maxPages: 500 },
+    });
+    expect(buildFileSourceUrl(src, 'payments.md')).toBe('https://dodopayments.com/payments');
+    expect(buildFileSourceUrl(src, 'case-studies/peerpush.md')).toBe(
+      'https://dodopayments.com/case-studies/peerpush'
+    );
+  });
+
+  it('uses the site root for a plain (single-file) url source', () => {
+    const src = source({ type: 'url', baseUrl: 'https://dodopayments.com' });
+    expect(buildFileSourceUrl(src, 'llms-full.md')).toBe('https://dodopayments.com');
+  });
+
+  it('builds a GitHub blob URL for repository sources', () => {
+    const src = source({ type: 'github', repository: 'dodopayments/dodopayments-go' });
+    expect(buildFileSourceUrl(src, 'README.md')).toBe(
+      'https://github.com/dodopayments/dodopayments-go/blob/main/README.md'
+    );
   });
 });

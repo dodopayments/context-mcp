@@ -36,6 +36,16 @@ export const SourceSchema = z
     // doesn't match the parser (e.g. save a Markdown doc served at `.txt` as `.md`).
     saveAs: z.string().min(1).optional(),
 
+    // URL sources: treat the fetched document as a link index (e.g. an
+    // llms.txt) and index the pages it links to instead of the index itself.
+    followLinks: z
+      .object({
+        hostAllowlist: z.array(z.string()).default([]),
+        appendExtension: z.string().default(''),
+        maxPages: z.number().int().positive().max(2000).default(500),
+      })
+      .optional(),
+
     // Local sources
     localPath: z.string().optional(),
 

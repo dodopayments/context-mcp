@@ -129,6 +129,24 @@ sources:
     baseUrl: https://dodopayments.com
 
   # =============================================================================
+  # MARKETING WEBSITE PAGES (full markdown of every page llms-full.txt links to)
+  # =============================================================================
+  # followLinks treats llms-full.txt as a link index: it fetches the .md version
+  # of every dodopayments.com page it references and indexes the full content,
+  # giving deeper per-page detail than the aggregate above with canonical
+  # per-page citation URLs.
+  - name: dodo-website-pages
+    displayName: 'Dodo Payments Website Pages'
+    type: url
+    url: https://dodopayments.com/llms-full.txt
+    parser: markdown
+    baseUrl: https://dodopayments.com
+    followLinks:
+      hostAllowlist:
+        - dodopayments.com
+      appendExtension: .md
+
+  # =============================================================================
   # SDK REPOSITORIES (Plain Markdown)
   # =============================================================================
   - name: sdk-typescript
