@@ -544,6 +544,86 @@ export function isRetryableUpsertError(err: unknown): boolean {
   return isRetryableError(err);
 }
 
+// git stderr signatures that indicate a TRANSIENT network failure (the clone/
+// fetch may succeed on retry). Matched case-insensitively. This is an
+// ALLOWLIST on purpose: unknown permanent failures (auth, repo-not-found,
+// branch-not-found, missing git binary) default to NOT retried, so a bad
+// config can't loop forever.
+//
+// Note: "could not resolve host" is intentionally absent. git's stderr can't
+// distinguish a transient EAI_AGAIN from a permanent ENOTFOUND, and the rest
+// of this module treats hard NXDOMAIN as permanent (ENOTFOUND is excluded
+// from RETRYABLE_NETWORK_CODES). Stay consistent — don't retry DNS failures.
+const RETRYABLE_GIT_PATTERNS = [
+  // --- RPC / transfer failures (mid-clone network drops) ---
+  'rpc failed', // curl 55/56 — mid-transfer network drop (large clones)
+  'early eof', // server closed the object stream early
+  'unexpected disconnect', // fetch-pack: unexpected disconnect
+  'remote end hung up', // peer dropped the connection
+  'transfer closed with outstanding read data', // curl 18 — partial file
+  'premature end of pack file', // pack truncated by network drop
+  'invalid index-pack', // consequence of a truncated pack transfer
+  'broken pipe', // write to a closed socket (SIGPIPE)
+  // --- HTTP/2 stream errors ---
+  'stream was not closed cleanly', // curl 92 — HTTP/2 INTERNAL_ERROR
+  // --- Protocol-level errors (transient server-side) ---
+  'protocol error: bad pack header', // server restart mid-negotiation
+  'expected flush after ref listing', // server closed before flush packet
+  'the requested url returned error: 5', // HTTP 5xx from git smart-HTTP transport
+  // --- Connection-level failures ---
+  'connection reset', // TCP RST
+  'connection refused', // port not open (transient during server restarts)
+  'connection closed', // clean FIN from peer mid-transfer (SSH or HTTP)
+  'connection timed out', // TCP timeout
+  'failed to connect', // libcurl connect failure
+  'could not connect', // "Couldn't connect to server" (connect timeout)
+  'network is unreachable', // ENETUNREACH — transient during VPN/wifi transitions
+  'timed out', // generic timeout wording
+  // --- TLS failures ---
+  'ssl_read', // TLS read blip (OpenSSL)
+  'gnutls', // TLS blip (GnuTLS, common on Linux CI)
+  'tls packet with unexpected length', // TLS record layer corruption (transient)
+  // --- Server sent nothing ---
+  'empty reply from server', // server sent nothing
+] as const;
+
+/**
+ * Extract git's stderr text from an execFileSync error. execFileSync populates
+ * `.stderr` as a Buffer when stdio is piped; fall back to `.message` (which
+ * also embeds the command line and stderr) when stderr is absent.
+ */
+function gitStderrText(err: unknown): string | undefined {
+  const e = err as { stderr?: Buffer | string; message?: string };
+  const raw = e?.stderr;
+  if (raw) return typeof raw === 'string' ? raw : raw.toString('utf8');
+  return e?.message;
+}
+
+/**
+ * Retry predicate for git clone/fetch (issue #66).
+ *
+ * execFileSync throws an Error carrying a non-zero `.status` (the git exit
+ * code) and `.stderr` (a Buffer) — neither the HTTP status nor the Node
+ * network code that `isRetryableError` recognises — so the default predicate
+ * never retries a transient git failure. This matches the text git itself
+ * emits on transient network blips (RPC failed, early EOF, connection reset,
+ * timeout, …). Falls back to `isRetryableError` for raw Node codes (e.g. a
+ * spawn-time ECONNRESET) that never reached git's own error formatting.
+ *
+ * SECURITY: git stderr / err.message can echo the clone URL, which embeds the
+ * auth token in the userinfo. This predicate only MATCHES substrings — it must
+ * never log or propagate stderr. Callers throw a clean, token-free Error on
+ * final failure, and withRetry's `label` is kept token-free.
+ */
+export function isRetryableGitError(err: unknown): boolean {
+  const text = gitStderrText(err);
+  if (text) {
+    const lower = text.toLowerCase();
+    if (RETRYABLE_GIT_PATTERNS.some(p => lower.includes(p))) return true;
+  }
+  return isRetryableError(err);
+}
+
 /**
  * Honour a Retry-After header (seconds or HTTP-date) if present on the error.
  * Returns a delay in ms, or undefined if not present/parseable.

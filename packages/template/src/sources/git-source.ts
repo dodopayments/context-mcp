@@ -26,6 +26,7 @@ import { existsSync, rmSync, mkdirSync } from 'fs';
 import { createHash } from 'crypto';
 import * as path from 'path';
 import { SourceConfig } from '../config/schema.js';
+import { withRetry, isRetryableGitError } from '../embeddings/core.js';
 
 // =============================================================================
 // TYPES
@@ -228,21 +229,44 @@ export function scrubGitRemote(
 // CLONE
 // =============================================================================
 
-/** Clone a repository with branch fallback. */
-function cloneRepository(
+/**
+ * Clone a repository with branch fallback. Only the network-bound clone is
+ * retried (via withRetry + isRetryableGitError); the branch→default-branch
+ * fallback is preserved because a non-retryable "Remote branch X not found"
+ * throws on the first attempt and falls through to the default-branch clone.
+ *
+ * A failed clone can leave a partial checkout on disk; each attempt clears it
+ * first so a retry never fails with a permanent-looking "destination path
+ * already exists" — that would mask the transient failure we are retrying.
+ */
+async function cloneRepository(
   spec: GitProviderSpec,
   cloneUrl: string,
   localPath: string,
   branch: string,
   repository: string,
   hasToken: boolean
-): void {
+): Promise<void> {
+  const label = `${spec.name} clone ${repository}`;
   try {
-    git(['clone', '--depth', '1', '--branch', branch, cloneUrl, localPath]);
+    await withRetry(
+      async () => {
+        if (existsSync(localPath)) rmSync(localPath, { recursive: true, force: true });
+        git(['clone', '--depth', '1', '--branch', branch, cloneUrl, localPath]);
+      },
+      { shouldRetry: isRetryableGitError, label }
+    );
   } catch {
-    // If branch-specific clone fails, try the default branch.
+    // If branch-specific clone fails (non-retryable, e.g. branch not found, OR
+    // transient but exhausted retries) — try the default branch.
     try {
-      git(['clone', '--depth', '1', cloneUrl, localPath]);
+      await withRetry(
+        async () => {
+          if (existsSync(localPath)) rmSync(localPath, { recursive: true, force: true });
+          git(['clone', '--depth', '1', cloneUrl, localPath]);
+        },
+        { shouldRetry: isRetryableGitError, label }
+      );
     } catch {
       throw new Error(
         `Failed to clone ${repository}. ` +
@@ -295,14 +319,19 @@ export async function fetchGitSource(
   // Reuse an existing clone when possible; otherwise (re)clone.
   if (existsSync(localPath)) {
     try {
-      git(['-C', localPath, 'fetch', '--depth', '1', 'origin', branch]);
+      // Only the network fetch is retried. The subsequent `reset --hard` is a
+      // local, deterministic op — retrying it would mask real corruption.
+      await withRetry(
+        async () => git(['-C', localPath, 'fetch', '--depth', '1', 'origin', branch]),
+        { shouldRetry: isRetryableGitError, label: `${spec.name} fetch ${source.repository}` }
+      );
       git(['-C', localPath, 'reset', '--hard', `origin/${branch}`]);
     } catch {
-      rmSync(localPath, { recursive: true });
-      cloneRepository(spec, cloneUrl, localPath, branch, source.repository, !!token);
+      rmSync(localPath, { recursive: true, force: true });
+      await cloneRepository(spec, cloneUrl, localPath, branch, source.repository, !!token);
     }
   } else {
-    cloneRepository(spec, cloneUrl, localPath, branch, source.repository, !!token);
+    await cloneRepository(spec, cloneUrl, localPath, branch, source.repository, !!token);
   }
 
   // Don't leave the token sitting in .git/config; the clone/fetch already used it.

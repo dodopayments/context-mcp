@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { isRetryableError, isRetryableUpsertError, withRetry, retryAfterMs } from './core.js';
+import {
+  isRetryableError,
+  isRetryableUpsertError,
+  isRetryableGitError,
+  withRetry,
+  retryAfterMs,
+} from './core.js';
 
 describe('isRetryableError', () => {
   it('retries on rate limit (429) and request timeout (408)', () => {
@@ -97,6 +103,244 @@ describe('isRetryableUpsertError', () => {
     );
     expect(result).toBe('upserted');
     expect(calls).toBe(2);
+  });
+});
+
+// Build a realistic execFileSync failure: a non-zero exit status plus a Buffer
+// stderr, exactly as Node attaches when `execFileSync('git', …)` throws.
+function gitExecError(stderr: string, status = 128): Error {
+  const e = new Error(`Command failed: git clone 'https://github.com/owner/repo.git'`);
+  (e as { status?: number; stderr?: Buffer }).status = status;
+  (e as { stderr?: Buffer }).stderr = Buffer.from(stderr, 'utf8');
+  return e;
+}
+
+describe('isRetryableGitError', () => {
+  it('retries an RPC failure (mid-transfer network drop)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: RPC failed; curl 56 GnuTLS recv error'))).toBe(
+      true
+    );
+  });
+
+  it('retries an early EOF (server closed the object stream early)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: early EOF'))).toBe(true);
+  });
+
+  it('retries an unexpected disconnect (fetch-pack)', () => {
+    expect(isRetryableGitError(gitExecError('fetch-pack: unexpected disconnect'))).toBe(true);
+  });
+
+  it('retries a remote-end-hung-up (peer dropped the connection)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: the remote end hung up unexpectedly'))).toBe(
+      true
+    );
+  });
+
+  it('retries a connection reset by peer (TCP RST)', () => {
+    expect(
+      isRetryableGitError(gitExecError("fatal: unable to access '...': Connection reset by peer"))
+    ).toBe(true);
+  });
+
+  it('retries a connection timed out (TCP timeout)', () => {
+    expect(
+      isRetryableGitError(gitExecError("fatal: unable to access '...': Connection timed out"))
+    ).toBe(true);
+  });
+
+  it('retries a connection refused / failed to connect (transient during restarts)', () => {
+    expect(
+      isRetryableGitError(
+        gitExecError("fatal: unable to access '...': Failed to connect to github.com port 443: Connection refused")
+      )
+    ).toBe(true);
+  });
+
+  it('retries a TLS read blip (OpenSSL ssl_read)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: SSL_read: ... GnuTLS'))).toBe(true);
+  });
+
+  it('retries a GnuTLS error (common on Linux CI)', () => {
+    expect(
+      isRetryableGitError(
+        gitExecError('GnuTLS recv error (-110): The TLS connection was non-properly terminated')
+      )
+    ).toBe(true);
+  });
+
+  it('retries an empty reply from server', () => {
+    expect(
+      isRetryableGitError(gitExecError("fatal: unable to access '...': Empty reply from server"))
+    ).toBe(true);
+  });
+
+  it('retries a transfer closed with outstanding read data (curl 18)', () => {
+    expect(
+      isRetryableGitError(
+        gitExecError('error: RPC failed; curl 18 transfer closed with outstanding read data remaining')
+      )
+    ).toBe(true);
+  });
+
+  it('retries a premature end of pack file (truncated transfer)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: premature end of pack file'))).toBe(true);
+  });
+
+  it('retries an invalid index-pack output (consequence of truncated transfer)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: fetch-pack: invalid index-pack output'))).toBe(
+      true
+    );
+  });
+
+  it('retries a broken pipe (write to closed socket)', () => {
+    expect(isRetryableGitError(gitExecError('Write failed: Broken pipe'))).toBe(true);
+  });
+
+  it('retries an HTTP/2 stream not closed cleanly (curl 92)', () => {
+    expect(
+      isRetryableGitError(
+        gitExecError('RPC failed; curl 92 HTTP/2 stream 0 was not closed cleanly: INTERNAL_ERROR (err 2)')
+      )
+    ).toBe(true);
+  });
+
+  it('retries a protocol error: bad pack header', () => {
+    expect(isRetryableGitError(gitExecError('protocol error: bad pack header'))).toBe(true);
+  });
+
+  it('retries an expected flush after ref listing', () => {
+    expect(
+      isRetryableGitError(gitExecError('fatal: expected flush after ref listing'))
+    ).toBe(true);
+  });
+
+  it('retries an HTTP 5xx from the git smart-HTTP transport', () => {
+    expect(
+      isRetryableGitError(gitExecError('fatal: unable to access the requested URL returned error: 503'))
+    ).toBe(true);
+  });
+
+  it('retries a connection closed by remote host (SSH)', () => {
+    expect(
+      isRetryableGitError(gitExecError('Connection closed by remote host'))
+    ).toBe(true);
+  });
+
+  it('retries a could-not-connect-to-server (connect timeout)', () => {
+    expect(
+      isRetryableGitError(
+        gitExecError('Failed to connect to github.com port 443: Couldn\'t connect to server')
+      )
+    ).toBe(true);
+  });
+
+  it('retries a network is unreachable (ENETUNREACH)', () => {
+    expect(
+      isRetryableGitError(gitExecError('fatal: unable to access: Network is unreachable'))
+    ).toBe(true);
+  });
+
+  it('retries a TLS packet with unexpected length', () => {
+    expect(
+      isRetryableGitError(gitExecError('TLS packet with unexpected length was received'))
+    ).toBe(true);
+  });
+
+  it('reads stderr from a Buffer (execFileSync shape), not just a string', () => {
+    // Proves Buffer -> utf8 decoding. If the predicate only handled strings it
+    // would silently never match a real execFileSync error.
+    const e = gitExecError('fatal: RPC failed');
+    expect((e as { stderr?: Buffer }).stderr).toBeInstanceOf(Buffer);
+    expect(isRetryableGitError(e)).toBe(true);
+  });
+
+  it('does NOT retry when stderr is an empty Buffer (git failed silently - no pattern to match)', () => {
+    const e = gitExecError('', 128);
+    expect((e as { stderr?: Buffer }).stderr).toBeInstanceOf(Buffer);
+    expect((e as { stderr?: Buffer }).stderr!.length).toBe(0);
+    expect(isRetryableGitError(e)).toBe(false);
+  });
+
+  it('falls back to err.message when stderr is absent but message carries a pattern', () => {
+    const e = new Error('git clone failed: Connection timed out');
+    expect(isRetryableGitError(e)).toBe(true);
+  });
+
+  it('does NOT retry "Repository not found" (wrong URL / no access — permanent)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: Repository not found'))).toBe(false);
+  });
+
+  it('does NOT retry an authentication failure (bad token — permanent)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: Authentication failed for ...'))).toBe(false);
+  });
+
+  it('does NOT retry a permission denied (SSH/auth — permanent)', () => {
+    expect(isRetryableGitError(gitExecError('Permission denied (publickey)'))).toBe(false);
+  });
+
+  it('does NOT retry "Remote branch X not found" — critical so the default-branch fallback still runs', () => {
+    // If this were retryable, withRetry would burn all attempts on the missing
+    // branch and the outer catch in cloneRepository could never reach the
+    // default-branch clone. It MUST be non-retryable.
+    expect(isRetryableGitError(gitExecError('fatal: Remote branch nonexistent-branch not found'))).toBe(
+      false
+    );
+  });
+
+  it('does NOT retry a missing-username prompt (no token for a private repo)', () => {
+    expect(isRetryableGitError(gitExecError("fatal: could not read Username '...'"))).toBe(false);
+  });
+
+  it('does NOT retry "not a git repository" (local path issue — permanent)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: not a git repository: ...'))).toBe(false);
+  });
+
+  it('does NOT retry a generic error with no stderr/status/code (allowlist default-deny)', () => {
+    expect(isRetryableGitError(new Error('boom'))).toBe(false);
+  });
+
+  it('does NOT retry an unknown git stderr (no transient substring — default-deny)', () => {
+    expect(isRetryableGitError(gitExecError('fatal: some unknown error'))).toBe(false);
+  });
+
+  it('delegates to isRetryableError for raw Node network codes (spawn-time ECONNRESET)', () => {
+    expect(isRetryableGitError({ code: 'ECONNRESET' })).toBe(true);
+  });
+
+  it('stays consistent with the NXDOMAIN policy: ENOTFOUND is NOT retried', () => {
+    expect(isRetryableGitError({ code: 'ENOTFOUND' })).toBe(false);
+  });
+
+  it('does NOT retry ENOENT (git binary not installed — permanent)', () => {
+    expect(isRetryableGitError({ code: 'ENOENT' })).toBe(false);
+  });
+
+  it('drives withRetry to retry a transient git failure then succeed', async () => {
+    let calls = 0;
+    const result = await withRetry(
+      async () => {
+        calls++;
+        if (calls < 2) throw gitExecError('fatal: RPC failed; curl 56');
+        return 'cloned';
+      },
+      { shouldRetry: isRetryableGitError, maxAttempts: 3, baseDelayMs: 1 }
+    );
+    expect(result).toBe('cloned');
+    expect(calls).toBe(2);
+  });
+
+  it('drives withRetry to throw immediately on a non-retryable git failure (no wasted attempts)', async () => {
+    let calls = 0;
+    await expect(
+      withRetry(
+        async () => {
+          calls++;
+          throw gitExecError('fatal: Repository not found');
+        },
+        { shouldRetry: isRetryableGitError, maxAttempts: 3, baseDelayMs: 1 }
+      )
+    ).rejects.toThrow();
+    expect(calls).toBe(1);
   });
 });
 
