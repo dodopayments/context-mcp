@@ -126,6 +126,15 @@ export function HomeClient() {
                   ContextMCP indexes everything at set intervals so Sentra always works with up to date information.
                 </p>
 
+                <a
+                  href="https://github.com/dodopayments/context-chat"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#60A5FA] font-medium hover:underline"
+                >
+                  Sentra&apos;s chat UI is open source too &rarr; ContextChat
+                </a>
+
               </div>
 
               <div className="relative h-full min-h-[300px] w-full flex items-center justify-center">
