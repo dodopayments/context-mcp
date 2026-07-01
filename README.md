@@ -59,6 +59,12 @@ ContextMCP creates a searchable knowledge base from your documentation that AI a
 4. **Store** - Upload to Pinecone vector database
 5. **Search** - Query via MCP from AI assistants
 
+## Ecosystem
+
+### Add a chat UI with ContextChat
+
+ContextMCP serves retrieval; pair it with [**ContextChat**](https://github.com/dodopayments/context-chat) to give your docs a drop-in, embeddable "Ask AI" widget. ContextChat is a single Cloudflare Worker that queries your ContextMCP `/search` endpoint and streams answers with inline citations — add it to any site or docs page with one `<script>` tag.
+
 ## Repository Structure
 
 ```
