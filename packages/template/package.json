@@ -7,7 +7,8 @@
   "scripts": {
     "reindex": "tsx scripts/reindex.ts",
     "reindex:dry": "tsx scripts/reindex.ts --dry-run",
-    "typecheck": "tsc --noEmit",
+    "reindex:incremental": "tsx scripts/reindex.ts --incremental",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
