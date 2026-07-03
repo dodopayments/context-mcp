@@ -19,9 +19,25 @@ vectordb:
 # EMBEDDINGS
 # =============================================================================
 embeddings:
+  # Pick ONE provider. You only need the API key for the provider you choose.
+  #
   # provider: openai            # Requires OPENAI_API_KEY
   # model: text-embedding-3-large
   # dimensions: 3072
+  #
+  # provider: cohere            # Requires COHERE_API_KEY
+  # model: embed-v4.0
+  # dimensions: 1536
+  #
+  # provider: voyage            # Requires VOYAGE_API_KEY
+  # model: voyage-4
+  # dimensions: 1024
+  #
+  # provider: ollama            # No API key — runs against a local Ollama server
+  # model: nomic-embed-text
+  # dimensions: 768             # must match the model's output dimension
+  # ollama:
+  #   baseUrl: http://localhost:11434   # optional, this is the default
 
   provider: gemini              # Requires GEMINI_API_KEY
   model: gemini-embedding-2-preview
@@ -100,6 +116,20 @@ sources:
     localPath: ./docs/
     parser: markdown
     optional: true # Don't fail if path doesn't exist
+
+  # ---------------------------------------------------------------------------
+  # Example 5: GitLab repository (gitlab.com or self-hosted)
+  # ---------------------------------------------------------------------------
+  # Set GITLAB_TOKEN in .env for private repos. For a self-hosted instance,
+  # set gitlabHost (defaults to gitlab.com).
+  # - name: gitlab-docs
+  #   displayName: 'GitLab Docs'
+  #   type: gitlab
+  #   repository: mygroup/my-docs # GitLab project path (group/project)
+  #   branch: main
+  #   path: docs/
+  #   parser: markdown
+  #   gitlabHost: gitlab.example.com # optional; omit for gitlab.com
 
 # =============================================================================
 # REINDEXING SETTINGS

@@ -31,6 +31,21 @@ export const SourceSchema = z
     // URL sources
     url: z.string().url().optional(),
 
+    // URL sources: bare filename to save fetched content under (no path separators).
+    // Parsers select files by extension, so set this when the URL's extension
+    // doesn't match the parser (e.g. save a Markdown doc served at `.txt` as `.md`).
+    saveAs: z.string().min(1).optional(),
+
+    // URL sources: treat the fetched document as a link index (e.g. an
+    // llms.txt) and index the pages it links to instead of the index itself.
+    followLinks: z
+      .object({
+        hostAllowlist: z.array(z.string()).default([]),
+        appendExtension: z.string().default(''),
+        maxPages: z.number().int().positive().max(2000).default(500),
+      })
+      .optional(),
+
     // Local sources
     localPath: z.string().optional(),
 
@@ -97,13 +112,19 @@ const VectorDbSchema = z.object({
 // accepted. The Zod enum below and the `EmbeddingProvider` union are both
 // derived from it, so the schema (what config.yaml accepts) and the provider
 // registry in `validate-embeddings.ts` can never drift apart.
-export const EMBEDDING_PROVIDER_IDS = ['openai', 'gemini'] as const;
+export const EMBEDDING_PROVIDER_IDS = ['openai', 'gemini', 'cohere', 'voyage', 'ollama'] as const;
 export type EmbeddingProvider = (typeof EMBEDDING_PROVIDER_IDS)[number];
 
 const EmbeddingsSchema = z.object({
   provider: z.enum(EMBEDDING_PROVIDER_IDS).default('openai'),
   model: z.string().default('text-embedding-3-large'),
   dimensions: z.number().default(3072),
+  // Ollama-specific: base URL of the local Ollama server.
+  ollama: z
+    .object({
+      baseUrl: z.string().url().default('http://localhost:11434'),
+    })
+    .optional(),
 });
 
 // Reindex settings

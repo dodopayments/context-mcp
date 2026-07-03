@@ -30,6 +30,9 @@ import {
   deletePineconeVectors,
   generateEmbeddingsOpenAI,
   generateEmbeddingsGemini,
+  generateEmbeddingsCohere,
+  generateEmbeddingsVoyage,
+  generateEmbeddingsOllama,
   chunkToRecord,
   prepareChunkForEmbedding,
   sleep,
@@ -126,43 +129,43 @@ type EmbedClient =
       gemini: GoogleGenAI;
       model: string;
       dimensions: number;
-    };
-
-async function embedAndUpload(
-  chunks: DocChunk[],
-  pinecone: Pinecone,
-  client: EmbedClient,
-  indexName: string,
-  batchSize: number
-): Promise<void> {
-  const index = pinecone.index(indexName);
-  const total = chunks.length;
-  let uploaded = 0;
-
-  console.log(`   Processing ${total} chunks in batches of ${batchSize}...`);
-
-  for (let i = 0; i < total; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-
-    // Prepare texts for embedding
-    const texts = batch.map(chunk => prepareChunkForEmbedding(chunk));
-
-    // Generate embeddings with the configured provider
-    let embeddings: number[][];
-    if (client.provider === 'gemini') {
-      embeddings = await generateEmbeddingsGemini(
-        client.gemini,
-        client.model,
-        texts,
-        client.dimensions
-      );
-    } else {
-      embeddings = await generateEmbeddingsOpenAI(
-        client.openai,
-        texts,
-        client.model,
-        client.dimensions
-      );
+    switch (client.provider) {
+      case 'gemini':
+        embeddings = await generateEmbeddingsGemini(
+          client.gemini,
+          client.model,
+          texts,
+          client.dimensions
+        );
+        break;
+      case 'cohere':
+        embeddings = await generateEmbeddingsCohere(
+          client.apiKey,
+          client.model,
+          texts,
+          client.dimensions
+        );
+        break;
+      case 'voyage':
+        embeddings = await generateEmbeddingsVoyage(
+          client.apiKey,
+          client.model,
+          texts,
+          client.dimensions
+        );
+        break;
+      case 'ollama':
+        embeddings = await generateEmbeddingsOllama(client.baseUrl, client.model, texts);
+        break;
+      case 'openai':
+      default:
+        embeddings = await generateEmbeddingsOpenAI(
+          client.openai,
+          texts,
+          client.model,
+          client.dimensions
+        );
+        break;
     }
 
     // Convert to Pinecone records
@@ -251,23 +254,49 @@ async function reindex(): Promise<void> {
   let embedClient: EmbedClient | undefined;
 
   if (!args.dryRun) {
-    validateEmbeddingEnv(config.embeddings.provider as 'openai' | 'gemini');
+    validateEmbeddingEnv(config.embeddings.provider);
     pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
 
-    if (config.embeddings.provider === 'gemini') {
-      embedClient = {
-        provider: 'gemini',
-        gemini: new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! }),
-        model: config.embeddings.model,
-        dimensions: config.embeddings.dimensions,
-      };
-    } else {
-      embedClient = {
-        provider: 'openai',
-        openai: new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }),
-        model: config.embeddings.model,
-        dimensions: config.embeddings.dimensions,
-      };
+    switch (config.embeddings.provider) {
+      case 'gemini':
+        embedClient = {
+          provider: 'gemini',
+          gemini: new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! }),
+          model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
+        };
+        break;
+      case 'cohere':
+        embedClient = {
+          provider: 'cohere',
+          apiKey: process.env.COHERE_API_KEY!,
+          model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
+        };
+        break;
+      case 'voyage':
+        embedClient = {
+          provider: 'voyage',
+          apiKey: process.env.VOYAGE_API_KEY!,
+          model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
+        };
+        break;
+      case 'ollama':
+        embedClient = {
+          provider: 'ollama',
+          baseUrl: config.embeddings.ollama?.baseUrl ?? 'http://localhost:11434',
+          model: config.embeddings.model,
+        };
+        break;
+      default:
+        embedClient = {
+          provider: 'openai',
+          openai: new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }),
+          model: config.embeddings.model,
+          dimensions: config.embeddings.dimensions,
+        };
+        break;
     }
 
     // Initialize and optionally clear Pinecone

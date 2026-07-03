@@ -49,14 +49,14 @@ export function FeaturesBento() {
                         <div className="text-zinc-500 opacity-50">function payment(req) {'{'}</div>
                         <div className="text-zinc-500 opacity-50 pl-2">const {'{'}id{'}'} = req.body;</div>
                         <div className="bg-red-500/20 text-red-200 p-1 rounded">--- CHUNK BREAK ---</div>
-                        <div className="text-zinc-500 opacity-50 pl-2">return stripe.charge(id);</div>
+                        <div className="text-zinc-500 opacity-50 pl-2">return dodo.charge(id);</div>
                         <div className="text-zinc-500 opacity-50">{'}'}</div>
                     </div>
                     <div className="bg-[#60A5FA]/5 p-4 space-y-2">
                         <div className="text-[#60A5FA] font-semibold mb-2">ContextMCP</div>
                         <div className="text-zinc-300">function payment(req) {'{'}</div>
                         <div className="text-zinc-300 pl-2">const {'{'}id{'}'} = req.body;</div>
-                        <div className="text-zinc-300 pl-2">return stripe.charge(id);</div>
+                        <div className="text-zinc-300 pl-2">return dodo.charge(id);</div>
                         <div className="text-zinc-300">{'}'}</div>
                         <div className="text-[#60A5FA] text-[9px] mt-1">✓ Full Context Preserved</div>
                     </div>
