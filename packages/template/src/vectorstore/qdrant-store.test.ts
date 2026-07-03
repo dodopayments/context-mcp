@@ -105,17 +105,47 @@ describe('QdrantStore', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('delete posts the namespace-mapped point ids to points/delete', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    globalThis.fetch = fetchMock;
+
+    await new QdrantStore(config).delete(['chunk-1', 'chunk-2']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const call = fetchMock.mock.calls[0];
+    expect(String(call[0])).toContain('/collections/docs/points/delete');
+    expect(call[1].method).toBe('POST');
+    const body = JSON.parse(call[1].body);
+    // Ids are mapped through the same derivation as upsert.
+    expect(body.points).toEqual([toQdrantPointId('chunk-1'), toQdrantPointId('chunk-2')]);
+  });
+
+  it('delete scopes point ids by namespace (parity with upsert)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    globalThis.fetch = fetchMock;
+
+    await new QdrantStore({ ...config, namespace: 'team-a' }).delete(['chunk-1']);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.points).toEqual([toQdrantPointId('team-a\u0000chunk-1')]);
+  });
+
+  it('delete is a no-op for an empty id list', async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+    await new QdrantStore(config).delete([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('stats reads points_count and vector size', async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            result: { points_count: 42, config: { params: { vectors: { size: 768 } } } },
-          }),
-          { status: 200 }
-        )
-      );
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          result: { points_count: 42, config: { params: { vectors: { size: 768 } } } },
+        }),
+        { status: 200 }
+      )
+    );
     const stats = await new QdrantStore(config).stats();
     expect(stats.vectorCount).toBe(42);
     expect(stats.dimension).toBe(768);

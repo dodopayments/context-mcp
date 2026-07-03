@@ -160,6 +160,29 @@ export class QdrantStore implements VectorStore {
     }
   }
 
+  async delete(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    // Map incoming vector ids to their namespace-scoped Qdrant point ids using
+    // the exact same derivation as upsert(), so we delete the right points.
+    const pointIds = ids.map(id =>
+      toQdrantPointId(this.namespace ? `${this.namespace}\u0000${id}` : id)
+    );
+
+    // Batch to keep request bodies bounded on large deletions.
+    const batchSize = 1000;
+    for (let i = 0; i < pointIds.length; i += batchSize) {
+      const batch = pointIds.slice(i, i + batchSize);
+      const res = await this.request(
+        'POST',
+        `/collections/${this.collection}/points/delete?wait=true`,
+        { points: batch }
+      );
+      if (!res.ok) {
+        throw new Error(`Qdrant delete failed: ${res.status} ${await res.text()}`);
+      }
+    }
+  }
+
   async clear(): Promise<{ success: boolean; vectorCount?: number }> {
     try {
       const before = await this.stats();

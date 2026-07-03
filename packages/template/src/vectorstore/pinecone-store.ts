@@ -79,6 +79,17 @@ export class PineconeStore implements VectorStore {
     await index.upsert(records);
   }
 
+  async delete(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const index = this.index().namespace(this.namespace);
+    // Batch deletes to stay within Pinecone's per-request id limit.
+    const batchSize = 1000;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      await index.deleteMany(batch);
+    }
+  }
+
   /**
    * Delete all vectors in the configured namespace.
    *

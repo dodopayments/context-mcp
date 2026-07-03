@@ -39,6 +39,9 @@ export interface VectorStore {
   /** Upsert a batch of embedding records. */
   upsert(records: EmbeddingRecord[]): Promise<void>;
 
+  /** Delete specific vectors by id (idempotent; no-op on empty input). */
+  delete(ids: string[]): Promise<void>;
+
   /**
    * Delete all vectors from the index/collection.
    * Returns how many existed before clearing when the backend can report it.

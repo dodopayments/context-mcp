@@ -69,3 +69,36 @@ describe('PineconeStore.stats namespace parity', () => {
     expect(s.dimension).toBe(1536);
   });
 });
+
+describe('PineconeStore.delete', () => {
+  /** Build a store whose fake index records deleteMany calls per namespace. */
+  function storeWithDeleteSpy(namespace: string | undefined) {
+    const calls: string[][] = [];
+    const store = new PineconeStore({ apiKey: 'x', indexName: 'docs', namespace });
+    const nsHandle = { deleteMany: async (ids: string[]) => void calls.push(ids) };
+    const fakeIndex = { namespace: () => nsHandle };
+    (store as unknown as { pc: { index: () => typeof fakeIndex } }).pc = {
+      index: () => fakeIndex,
+    };
+    return { store, calls };
+  }
+
+  it('deletes ids via the configured namespace', async () => {
+    const { store, calls } = storeWithDeleteSpy('team-a');
+    await store.delete(['a', 'b', 'c']);
+    expect(calls).toEqual([['a', 'b', 'c']]);
+  });
+
+  it('is a no-op for an empty id list', async () => {
+    const { store, calls } = storeWithDeleteSpy('');
+    await store.delete([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('batches deletes by 1000 ids', async () => {
+    const { store, calls } = storeWithDeleteSpy('');
+    const ids = Array.from({ length: 2500 }, (_, i) => `id-${i}`);
+    await store.delete(ids);
+    expect(calls.map(c => c.length)).toEqual([1000, 1000, 500]);
+  });
+});
