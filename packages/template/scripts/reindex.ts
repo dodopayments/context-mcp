@@ -129,6 +129,46 @@ type EmbedClient =
       gemini: GoogleGenAI;
       model: string;
       dimensions: number;
+    }
+  | {
+      provider: 'cohere';
+      apiKey: string;
+      model: string;
+      dimensions: number;
+    }
+  | {
+      provider: 'voyage';
+      apiKey: string;
+      model: string;
+      dimensions: number;
+    }
+  | {
+      provider: 'ollama';
+      baseUrl: string;
+      model: string;
+    };
+
+async function embedAndUpload(
+  chunks: DocChunk[],
+  pinecone: Pinecone,
+  client: EmbedClient,
+  indexName: string,
+  batchSize: number
+): Promise<void> {
+  const index = pinecone.index(indexName);
+  const total = chunks.length;
+  let uploaded = 0;
+
+  console.log(`   Processing ${total} chunks in batches of ${batchSize}...`);
+
+  for (let i = 0; i < total; i += batchSize) {
+    const batch = chunks.slice(i, i + batchSize);
+
+    // Prepare texts for embedding
+    const texts = batch.map(chunk => prepareChunkForEmbedding(chunk));
+
+    // Generate embeddings with the configured provider
+    let embeddings: number[][];
     switch (client.provider) {
       case 'gemini':
         embeddings = await generateEmbeddingsGemini(
