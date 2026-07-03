@@ -47,3 +47,8 @@ coverage/
 
 # Misc
 *.local
+# Core dumps (never commit process memory)
+core
+core.*
+*.core
+vgcore.*
