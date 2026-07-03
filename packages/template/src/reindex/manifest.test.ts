@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import {
@@ -96,6 +96,8 @@ describe('diffChunks', () => {
     expect(diff.toUpsert).toHaveLength(2);
     expect(diff.toDelete).toHaveLength(0);
     expect(diff.unchangedCount).toBe(0);
+    expect(diff.newCount).toBe(2);
+    expect(diff.changedCount).toBe(0);
   });
 
   it('skips unchanged chunks', () => {
@@ -115,6 +117,8 @@ describe('diffChunks', () => {
     expect(ids).toEqual(['b', 'c']); // b changed, c is new
     expect(diff.unchangedCount).toBe(1); // a unchanged
     expect(diff.toDelete).toHaveLength(0);
+    expect(diff.newCount).toBe(1); // c added
+    expect(diff.changedCount).toBe(1); // b updated
   });
 
   it('detects removed chunks', () => {
@@ -294,6 +298,8 @@ describe('manifest persistence', () => {
     saveManifest(file, manifest);
     const loaded = loadManifest(file);
     expect(loaded).toEqual(manifest);
+    // Atomic write must not leave the temp file behind.
+    expect(existsSync(`${file}.tmp`)).toBe(false);
   });
 
   it('returns null for a missing file', () => {

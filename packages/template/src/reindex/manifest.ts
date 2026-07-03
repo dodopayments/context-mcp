@@ -11,7 +11,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import * as path from 'node:path';
 import { type DocChunk, toVectorId } from '../types/index.js';
 
@@ -81,6 +81,10 @@ export interface ReindexDiff {
   toDelete: string[];
   /** Count of chunks whose hash is unchanged (skipped). */
   unchangedCount: number;
+  /** Of `toUpsert`, how many ids were not in the previous manifest (added). */
+  newCount: number;
+  /** Of `toUpsert`, how many ids existed but whose hash changed (updated). */
+  changedCount: number;
 }
 
 /**
@@ -216,6 +220,8 @@ export function diffChunks(
 
   const toUpsert: DocChunk[] = [];
   let unchangedCount = 0;
+  let newCount = 0;
+  let changedCount = 0;
 
   // Treat a version mismatch OR an embedding-model change as a full reindex.
   // For the model change we only invalidate when BOTH signatures are known and
@@ -240,6 +246,8 @@ export function diffChunks(
       unchangedCount++;
     } else {
       toUpsert.push(chunk);
+      if (oldHash === undefined) newCount++;
+      else changedCount++;
     }
   }
 
@@ -253,7 +261,7 @@ export function diffChunks(
     }
   }
 
-  return { toUpsert, toDelete, unchangedCount };
+  return { toUpsert, toDelete, unchangedCount, newCount, changedCount };
 }
 
 // Re-exported from a single source of truth in ../types so the manifest's
@@ -278,9 +286,17 @@ export function loadManifest(filePath: string): ReindexManifest | null {
   }
 }
 
-/** Persist a manifest to disk (creating parent dirs as needed). */
+/**
+ * Persist a manifest to disk (creating parent dirs as needed).
+ *
+ * Writes to a temp file then renames, so a crash mid-write can't leave a
+ * truncated manifest. (A truncated manifest still fails safe — loadManifest
+ * returns null → full reindex — but an atomic swap avoids the wasted run.)
+ */
 export function saveManifest(filePath: string, manifest: ReindexManifest): void {
   const dir = path.dirname(filePath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(filePath, JSON.stringify(manifest, null, 2));
+  const tmpPath = `${filePath}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(manifest, null, 2));
+  renameSync(tmpPath, filePath);
 }

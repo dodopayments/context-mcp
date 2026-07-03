@@ -50,6 +50,7 @@ import {
   loadManifest,
   saveManifest,
   assertNoVectorIdCollisions,
+  sameEmbeddingSignature,
 } from '../src/reindex/manifest.js';
 
 // =============================================================================
@@ -443,11 +444,16 @@ async function reindex(): Promise<void> {
       if (!previous) {
         console.log('');
         console.log('ℹ️  No previous manifest found — performing a full first-time index.');
-      } else if (previous.embedding && previous.embedding.model !== embeddingSignature.model) {
+      } else if (
+        previous.embedding &&
+        !sameEmbeddingSignature(previous.embedding, embeddingSignature)
+      ) {
         console.log('');
         console.log(
-          `ℹ️  Embedding model changed (${previous.embedding.provider}/${previous.embedding.model} ` +
-            `-> ${embeddingSignature.provider}/${embeddingSignature.model}) — re-embedding everything.`
+          `ℹ️  Embedding signature changed ` +
+            `(${previous.embedding.provider}/${previous.embedding.model}@${previous.embedding.dimensions} ` +
+            `-> ${embeddingSignature.provider}/${embeddingSignature.model}@${embeddingSignature.dimensions}) ` +
+            `— re-embedding everything.`
         );
       }
 
@@ -456,7 +462,9 @@ async function reindex(): Promise<void> {
 
       console.log('');
       console.log('🔍 Incremental diff:');
-      console.log(`   ${diff.toUpsert.length} new/changed chunk(s) to embed`);
+      console.log(
+        `   ${diff.toUpsert.length} to embed (${diff.newCount} added, ${diff.changedCount} updated)`
+      );
       console.log(`   ${diff.unchangedCount} unchanged chunk(s) skipped`);
       console.log(`   ${diff.toDelete.length} removed chunk(s) to delete`);
 
