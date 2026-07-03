@@ -18,17 +18,25 @@ Required environment variables:
 - One embedding provider key, matching `embeddings.provider` in `config.yaml`:
   - `OPENAI_API_KEY` - if `provider: openai` (default)
   - `GEMINI_API_KEY` - if `provider: gemini`
+  - `COHERE_API_KEY` - if `provider: cohere`
+  - `VOYAGE_API_KEY` - if `provider: voyage`
+  - _(none)_ - if `provider: ollama` (runs against a local Ollama server)
 
 ### Embedding Providers
 
-ContextMCP supports two embedding providers. Pick one in `config.yaml`:
+ContextMCP supports five embedding providers. Pick one in `config.yaml`:
 
-| Provider | `model`                     | `dimensions` | Env var          |
-| -------- | --------------------------- | ------------ | ---------------- |
-| `openai` | `text-embedding-3-large`    | `3072`       | `OPENAI_API_KEY` |
-| `gemini` | `gemini-embedding-2-preview`| `3072`       | `GEMINI_API_KEY` |
+| Provider | `model`                      | `dimensions` | Env var          |
+| -------- | ---------------------------- | ------------ | ---------------- |
+| `openai` | `text-embedding-3-large`     | `3072`       | `OPENAI_API_KEY` |
+| `gemini` | `gemini-embedding-2-preview` | `3072`       | `GEMINI_API_KEY` |
+| `cohere` | `embed-v4.0`                 | `1536`       | `COHERE_API_KEY` |
+| `voyage` | `voyage-4`                   | `1024`       | `VOYAGE_API_KEY` |
+| `ollama` | `nomic-embed-text`           | `768`        | _(none — local)_ |
 
-You only need the API key for the provider you choose.
+You only need the API key for the provider you choose. `ollama` needs none — it
+runs fully offline against a local [Ollama](https://ollama.com) server (set
+`embeddings.ollama.baseUrl` in `config.yaml`, default `http://localhost:11434`).
 
 ### 2. Configure Documentation Sources
 
@@ -122,8 +130,8 @@ npm run deploy
 │   ├── parser/           # Document parsers
 │   │   ├── chunkers/     # MDX, Markdown, OpenAPI chunkers
 │   │   └── core/         # Shared utilities
-│   ├── embeddings/       # Embedding generation (OpenAI / Gemini)
-│   ├── sources/          # GitHub, local, URL fetchers
+│   ├── embeddings/       # Embedding generation (OpenAI, Gemini, Cohere, Voyage, Ollama)
+│   ├── sources/          # GitHub, GitLab, local, URL fetchers
 │   ├── config/           # Config schema and loader
 │   └── types/            # TypeScript types
 ├── cloudflare-worker/    # MCP server deployment
