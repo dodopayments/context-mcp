@@ -1,17 +1,27 @@
 name: Scheduled Documentation Reindex
 
-on:
-  # Run every 3 days at 2 AM UTC (7:30 AM IST)
-  schedule:
-    - cron: '0 2 */3 * *'
+# Daily incremental reindex; content-hash manifest persisted in R2 across runs.
+# Dispatch with full=true to force a clear+rebuild.
 
-  # Allow manual trigger from GitHub UI
+on:
+  schedule:
+    - cron: '0 2 * * *' # daily, 2 AM UTC
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Force a FULL reindex (clear + rebuild, reseed manifest)'
+        type: boolean
+        default: false
 
 jobs:
   reindex:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
+    env:
+      R2_BUCKET: dodo-knowledge-mcp-manifest
+      R2_OBJECT: reindex-manifest.json
+      MANIFEST_PATH: data/reindex-manifest.json
 
     steps:
       - name: Checkout repository
@@ -26,9 +36,36 @@ jobs:
       - name: Install dependencies
         run: npm clean-install
 
-      - name: Run full documentation reindex
+      - name: Restore manifest from R2
+        if: ${{ inputs.full != true }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          if npx --yes wrangler@4 r2 object get "$R2_BUCKET/$R2_OBJECT" --file "$MANIFEST_PATH" --remote 2> r2_err.log; then
+            echo "✅ Restored manifest from R2"
+          elif grep -qiE 'does not exist|not found|404|10007|NoSuchKey' r2_err.log; then
+            echo "::warning::No manifest in R2 — full first-time index (expected only on first run)."
+          else
+            cat r2_err.log; exit 1
+          fi
+
+      - name: Reindex
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npm run reindex:dodo
+        run: |
+          if [ "${{ inputs.full }}" = "true" ]; then
+            npm run reindex:dodo
+          else
+            npm run reindex:dodo -- --incremental
+          fi
+
+      - name: Save manifest to R2
+        if: ${{ success() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 r2 object put "$R2_BUCKET/$R2_OBJECT" --file "$MANIFEST_PATH" --remote
