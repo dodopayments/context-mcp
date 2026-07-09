@@ -151,7 +151,9 @@ describe('isRetryableGitError', () => {
   it('retries a connection refused / failed to connect (transient during restarts)', () => {
     expect(
       isRetryableGitError(
-        gitExecError("fatal: unable to access '...': Failed to connect to github.com port 443: Connection refused")
+        gitExecError(
+          "fatal: unable to access '...': Failed to connect to github.com port 443: Connection refused"
+        )
       )
     ).toBe(true);
   });
@@ -177,7 +179,9 @@ describe('isRetryableGitError', () => {
   it('retries a transfer closed with outstanding read data (curl 18)', () => {
     expect(
       isRetryableGitError(
-        gitExecError('error: RPC failed; curl 18 transfer closed with outstanding read data remaining')
+        gitExecError(
+          'error: RPC failed; curl 18 transfer closed with outstanding read data remaining'
+        )
       )
     ).toBe(true);
   });
@@ -199,7 +203,9 @@ describe('isRetryableGitError', () => {
   it('retries an HTTP/2 stream not closed cleanly (curl 92)', () => {
     expect(
       isRetryableGitError(
-        gitExecError('RPC failed; curl 92 HTTP/2 stream 0 was not closed cleanly: INTERNAL_ERROR (err 2)')
+        gitExecError(
+          'RPC failed; curl 92 HTTP/2 stream 0 was not closed cleanly: INTERNAL_ERROR (err 2)'
+        )
       )
     ).toBe(true);
   });
@@ -209,27 +215,25 @@ describe('isRetryableGitError', () => {
   });
 
   it('retries an expected flush after ref listing', () => {
-    expect(
-      isRetryableGitError(gitExecError('fatal: expected flush after ref listing'))
-    ).toBe(true);
+    expect(isRetryableGitError(gitExecError('fatal: expected flush after ref listing'))).toBe(true);
   });
 
   it('retries an HTTP 5xx from the git smart-HTTP transport', () => {
     expect(
-      isRetryableGitError(gitExecError('fatal: unable to access the requested URL returned error: 503'))
+      isRetryableGitError(
+        gitExecError('fatal: unable to access the requested URL returned error: 503')
+      )
     ).toBe(true);
   });
 
   it('retries a connection closed by remote host (SSH)', () => {
-    expect(
-      isRetryableGitError(gitExecError('Connection closed by remote host'))
-    ).toBe(true);
+    expect(isRetryableGitError(gitExecError('Connection closed by remote host'))).toBe(true);
   });
 
   it('retries a could-not-connect-to-server (connect timeout)', () => {
     expect(
       isRetryableGitError(
-        gitExecError('Failed to connect to github.com port 443: Couldn\'t connect to server')
+        gitExecError("Failed to connect to github.com port 443: Couldn't connect to server")
       )
     ).toBe(true);
   });
@@ -282,9 +286,9 @@ describe('isRetryableGitError', () => {
     // If this were retryable, withRetry would burn all attempts on the missing
     // branch and the outer catch in cloneRepository could never reach the
     // default-branch clone. It MUST be non-retryable.
-    expect(isRetryableGitError(gitExecError('fatal: Remote branch nonexistent-branch not found'))).toBe(
-      false
-    );
+    expect(
+      isRetryableGitError(gitExecError('fatal: Remote branch nonexistent-branch not found'))
+    ).toBe(false);
   });
 
   it('does NOT retry a missing-username prompt (no token for a private repo)', () => {
