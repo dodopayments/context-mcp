@@ -3,8 +3,9 @@
  *
  * CANONICAL SOURCE. This module is intentionally free of any runtime-specific
  * imports (no Pinecone client, no OpenAI SDK, no Node or Workers globals) so it
- * can be consumed by BOTH deployment targets:
- *   - the Cloudflare worker  (packages/template/cloudflare-worker)
+ * is consumed by BOTH deployment targets:
+ *   - the Cloudflare worker  (packages/template/cloudflare-worker) — imports it
+ *     directly; wrangler/esbuild bundles the relative path.
  *   - the Node server         (packages/template/server)
  *
  * The Node server keeps a *vendored copy* of this file (server/src/shared/

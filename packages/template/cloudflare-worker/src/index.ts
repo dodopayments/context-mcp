@@ -19,6 +19,17 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
+// Runtime-agnostic search contract shared with the Node server
+// (packages/template/server). Wrangler bundles the relative import; the
+// scaffolded project keeps src/ and cloudflare-worker/ side by side, so the
+// path resolves there too. Edit the canonical source, not a local copy.
+import {
+  type SearchResult,
+  clampLimit,
+  roundScore,
+  mapMatchToSearchResult,
+  formatResults,
+} from '../../src/search-core';
 
 // =============================================================================
 // TYPES
@@ -51,17 +62,6 @@ interface Env {
 
   // Durable Object binding
   MCP_OBJECT: DurableObjectNamespace;
-}
-
-interface SearchResult {
-  score: number;
-  title: string;
-  heading: string;
-  content: string;
-  url?: string;
-  method?: string;
-  path?: string;
-  language?: string;
 }
 
 // =============================================================================
@@ -174,7 +174,7 @@ async function rerankWithPinecone(
 
     return rerankResult.data.map(r => ({
       ...documents[r.index],
-      score: Math.round((r.score || 0) * 100) / 100,
+      score: roundScore(r.score),
     }));
   } catch (error) {
     console.error('[Rerank] Failed:', error);
@@ -193,7 +193,7 @@ async function searchDocs(
   const rerankEnabled = env.ENABLE_RERANK !== 'false';
   const rerankFetchCount = parseInt(env.RERANK_FETCH_COUNT, 10) || 30;
 
-  const returnCount = Math.min(Math.max(1, limit ?? defaultTopK), maxTopK);
+  const returnCount = clampLimit(limit, defaultTopK, maxTopK);
   const index = pinecone.index(env.PINECONE_INDEX_NAME);
   const queryEmbedding = await generateQueryEmbedding(env, query);
 
@@ -206,46 +206,13 @@ async function searchDocs(
   });
 
   const searchResults: SearchResult[] =
-    results.matches?.map(match => ({
-      score: Math.round((match.score || 0) * 100) / 100,
-      title: String(match.metadata?.documentTitle || ''),
-      heading: String(match.metadata?.heading || ''),
-      content: String(match.metadata?.content || ''),
-      url: match.metadata?.sourceUrl as string | undefined,
-      method: match.metadata?.method as string | undefined,
-      path: match.metadata?.path as string | undefined,
-      language: match.metadata?.language as string | undefined,
-    })) || [];
+    results.matches?.map(match => mapMatchToSearchResult(match.score, match.metadata)) || [];
 
   if (searchResults.length > 0 && rerankEnabled) {
     return rerankWithPinecone(pinecone, query, searchResults, returnCount, env);
   }
 
   return searchResults.slice(0, returnCount);
-}
-
-function formatResults(results: SearchResult[], query: string, serverName: string): string {
-  const lines: string[] = [
-    `# ${serverName} Documentation`,
-    `> Query: ${query}`,
-    `> Results: ${results.length}`,
-    '',
-  ];
-
-  const separator = '-'.repeat(40);
-
-  results.forEach(result => {
-    lines.push(separator);
-    lines.push(`## ${result.title}`);
-    if (result.url) lines.push(`Source: ${result.url}`);
-    if (result.method && result.path) lines.push(`API: ${result.method} ${result.path}`);
-    if (result.language) lines.push(`Language: ${result.language}`);
-    lines.push('');
-    lines.push(result.content);
-    lines.push('');
-  });
-
-  return lines.join('\n');
 }
 
 // =============================================================================
