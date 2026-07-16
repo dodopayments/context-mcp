@@ -8,6 +8,7 @@ import {
   urlToFilename,
   disambiguateFilename,
   isFetchAllowed,
+  isAcceptableContentType,
   URL_MAP_FILENAME,
   fetchWebsiteSource,
 } from './website.js';
@@ -190,6 +191,32 @@ describe('isFetchAllowed (SSRF guard)', () => {
   });
 });
 
+describe('isAcceptableContentType', () => {
+  it('accepts html and xml content types', () => {
+    expect(isAcceptableContentType('text/html; charset=utf-8', 'https://x.com/a')).toBe(true);
+    expect(isAcceptableContentType('application/xml', 'https://x.com/sitemap.xml')).toBe(true);
+  });
+
+  it('rejects non-document content types', () => {
+    expect(isAcceptableContentType('application/json', 'https://x.com/a')).toBe(false);
+    expect(isAcceptableContentType('image/png', 'https://x.com/a.html')).toBe(false);
+  });
+
+  it('rejects an empty content type when the URL does not look like a document', () => {
+    expect(isAcceptableContentType('', 'https://x.com/download')).toBe(false);
+  });
+
+  it('accepts an empty content type only when the URL itself looks like html/xml', () => {
+    expect(isAcceptableContentType('', 'https://x.com/page.html')).toBe(true);
+    expect(isAcceptableContentType('', 'https://x.com/page.htm')).toBe(true);
+    expect(isAcceptableContentType('', 'https://x.com/sitemap.xml')).toBe(true);
+  });
+
+  it('rejects an empty content type with an unparseable URL', () => {
+    expect(isAcceptableContentType('', 'not a url')).toBe(false);
+  });
+});
+
 describe('fetchWebsiteSource URL map sidecar', () => {
   const realFetch = globalThis.fetch;
   let staged: string | undefined;
@@ -312,6 +339,77 @@ describe('fetchWebsiteSource URL map sidecar', () => {
     for (const file of Object.keys(map)) {
       expect(fs.existsSync(path.join(result.localPath, file))).toBe(true);
     }
+
+    result.cleanup();
+  });
+});
+
+describe('fetchWebsiteSource content-type handling', () => {
+  const realFetch = globalThis.fetch;
+  let staged: string | undefined;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    vi.restoreAllMocks();
+    if (staged && fs.existsSync(staged)) fs.rmSync(staged, { recursive: true, force: true });
+    staged = undefined;
+  });
+
+  const page = (h: string) =>
+    `<html><head><title>${h}</title></head><body><main><h2>${h}</h2>` +
+    `<p>This is a sufficiently long paragraph of documentation text for ${h} so ` +
+    `that the chunker and staging pipeline have real content to work with.</p>` +
+    `</main></body></html>`;
+
+  function htmlResponse(body: string): Response {
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/html' } });
+  }
+  function xmlResponse(body: string): Response {
+    return new Response(body, { status: 200, headers: { 'content-type': 'application/xml' } });
+  }
+  function textResponse(body: string): Response {
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/plain' } });
+  }
+
+  it('drops a page served with an empty content-type unless its URL looks like html', async () => {
+    const origin = 'https://docs.example.com';
+    const sitemap = `<?xml version="1.0"?><urlset>
+      <url><loc>${origin}/docs/blob</loc></url>
+      <url><loc>${origin}/docs/page.html</loc></url>
+    </urlset>`;
+
+    // Responses with an explicitly empty content-type header.
+    const bareResponse = (body: string) =>
+      new Response(body, { status: 200, headers: { 'content-type': '' } });
+
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.endsWith('/robots.txt')) return new Response('not found', { status: 404 });
+      if (url.endsWith('/sitemap.xml')) return xmlResponse(sitemap);
+      if (url.includes('/docs/blob')) return bareResponse(page('Blob'));
+      if (url.includes('/docs/page.html')) return bareResponse(page('Page'));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const source = {
+      name: 'bare-content-type',
+      type: 'website',
+      parser: 'html',
+      url: `${origin}/`,
+      maxPages: 10,
+      crawlDepth: 1,
+    } as SourceConfig;
+
+    const result = await fetchWebsiteSource(source);
+    staged = result.localPath;
+
+    const map = JSON.parse(
+      fs.readFileSync(path.join(result.localPath, URL_MAP_FILENAME), 'utf-8')
+    ) as Record<string, string>;
+    // The extensionless URL with no content-type is NOT trusted as HTML...
+    expect(Object.values(map)).not.toContain(`${origin}/docs/blob`);
+    // ...but the .html URL is, since the URL itself signals a document.
+    expect(Object.values(map)).toContain(`${origin}/docs/page.html`);
 
     result.cleanup();
   });

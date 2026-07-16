@@ -175,6 +175,23 @@ export function isFetchAllowed(url: string, allowedOrigin?: string): boolean {
   return isSameOrigin(url, allowedOrigin);
 }
 
+/**
+ * Whether a response should be collected as a document. HTML/XML content
+ * types always qualify; other explicit content types never do. A MISSING
+ * content-type is only trusted when the URL itself looks like a document
+ * (.html/.htm/.xml) — a bare header on an extensionless URL is more likely a
+ * binary/download endpoint than a page.
+ */
+export function isAcceptableContentType(contentType: string, url: string): boolean {
+  if (contentType.includes('html') || contentType.includes('xml')) return true;
+  if (contentType !== '') return false;
+  try {
+    return /\.(html?|xml)$/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 // =============================================================================
 // FETCHING
 // =============================================================================
@@ -196,10 +213,9 @@ async function fetchText(url: string, allowedOrigin?: string): Promise<string | 
     if (res.url && !isFetchAllowed(res.url, allowedOrigin)) return null;
     if (!res.ok) return null;
     const contentType = res.headers.get('content-type') || '';
-    // Only collect HTML/XML pages.
-    if (!contentType.includes('html') && !contentType.includes('xml') && contentType !== '') {
-      return null;
-    }
+    // Only collect HTML/XML pages; don't trust a missing content-type unless
+    // the URL itself looks like a document.
+    if (!isAcceptableContentType(contentType, res.url || url)) return null;
     return await res.text();
   } catch {
     return null;
