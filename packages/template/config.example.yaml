@@ -8,12 +8,20 @@
 # VECTOR DATABASE
 # =============================================================================
 vectordb:
+  # 'pinecone' (default) or 'qdrant'
   provider: pinecone
-  # Index name in Pinecone (will be created if doesn't exist)
+  # Pinecone index name / Qdrant collection name (created if it doesn't exist)
   indexName: my-company-docs
+  # Optional logical namespace within the index/collection (Qdrant emulates
+  # namespaces via a payload filter; leave unset to use the whole collection).
+  # namespace: team-a
   pinecone:
     cloud: aws
     region: us-east-1
+  # For provider: qdrant, set QDRANT_URL in .env (and QDRANT_API_KEY for
+  # Qdrant Cloud), or put the URL here:
+  # qdrant:
+  #   url: http://localhost:6333
 
 # =============================================================================
 # EMBEDDINGS

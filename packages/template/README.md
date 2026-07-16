@@ -14,7 +14,9 @@ cp .env.example .env
 
 Required environment variables:
 
-- `PINECONE_API_KEY` - Your Pinecone API key (always required)
+- Vector database, matching `vectordb.provider` in `config.yaml`:
+  - `PINECONE_API_KEY` - if `provider: pinecone` (default)
+  - `QDRANT_URL` (and `QDRANT_API_KEY` for Qdrant Cloud) - if `provider: qdrant`
 - One embedding provider key, matching `embeddings.provider` in `config.yaml`:
   - `OPENAI_API_KEY` - if `provider: openai` (default)
   - `GEMINI_API_KEY` - if `provider: gemini`
@@ -44,8 +46,8 @@ Edit `config.yaml` to add your documentation sources:
 
 ```yaml
 vectordb:
-  provider: pinecone
-  indexName: my-docs # Your Pinecone index name
+  provider: pinecone # or qdrant
+  indexName: my-docs # Pinecone index name / Qdrant collection name
 
 embeddings:
   provider: openai
@@ -106,22 +108,27 @@ wrangler secret put OPENAI_API_KEY
 npm run deploy
 ```
 
+Serving from Qdrant instead of Pinecone: set `VECTORDB_PROVIDER=qdrant` plus
+the `QDRANT_*` vars on the worker (see [cloudflare-worker/README.md](cloudflare-worker/README.md)
+for the full list). Reranking uses Pinecone's inference API and is
+Pinecone-only; Qdrant results come back in vector-similarity order.
+
 ## Available Parsers
 
-| Parser     | Use Case                                               | Extensions       |
-| ---------- | ------------------------------------------------------ | ---------------- |
-| `mdx`      | MDX/ documentation (Mintlify, Fumadocs)                | `.mdx`           |
-| `markdown` | Plain markdown files (READMEs, CHANGELOGs)             | `.md`            |
-| `openapi`  | OpenAPI/Swagger specifications                         | `.yaml`, `.json` |
+| Parser     | Use Case                                   | Extensions       |
+| ---------- | ------------------------------------------ | ---------------- |
+| `mdx`      | MDX/ documentation (Mintlify, Fumadocs)    | `.mdx`           |
+| `markdown` | Plain markdown files (READMEs, CHANGELOGs) | `.md`            |
+| `openapi`  | OpenAPI/Swagger specifications             | `.yaml`, `.json` |
 
 ## Source Types
 
-| Type     | Description                          |
-| -------- | ------------------------------------ |
-| `github` | Fetch from GitHub repository         |
-| `gitlab` | Fetch from GitLab (or self-hosted)   |
-| `local`  | Local file path                      |
-| `url`    | Remote URL                           |
+| Type     | Description                        |
+| -------- | ---------------------------------- |
+| `github` | Fetch from GitHub repository       |
+| `gitlab` | Fetch from GitLab (or self-hosted) |
+| `local`  | Local file path                    |
+| `url`    | Remote URL                         |
 
 ## Project Structure
 
@@ -142,17 +149,17 @@ npm run deploy
 
 ## Scripts
 
-| Script                               | Description                     |
-| ------------------------------------ | ------------------------------- |
-| `npm run reindex`                    | Index all documentation sources |
-| `npm run reindex:dry`                | Dry run (no uploads)            |
-| `npm run reindex:incremental`        | Only embed/upload changed chunks |
-| `npm run reindex -- --source=<name>` | Index specific source           |
-| `npm run clean:vectors`              | Clear all vectors (asks to confirm) |
+| Script                               | Description                            |
+| ------------------------------------ | -------------------------------------- |
+| `npm run reindex`                    | Index all documentation sources        |
+| `npm run reindex:dry`                | Dry run (no uploads)                   |
+| `npm run reindex:incremental`        | Only embed/upload changed chunks       |
+| `npm run reindex -- --source=<name>` | Index specific source                  |
+| `npm run clean:vectors`              | Clear all vectors (asks to confirm)    |
 | `npm run clean:vectors -- --force`   | Clear all vectors without confirmation |
-| `npm run typecheck`                  | TypeScript type checking        |
-| `npm test`                           | Run unit tests (Vitest)         |
-| `npm run test:watch`                 | Run unit tests in watch mode    |
+| `npm run typecheck`                  | TypeScript type checking               |
+| `npm test`                           | Run unit tests (Vitest)                |
+| `npm run test:watch`                 | Run unit tests in watch mode           |
 
 ## Testing
 
