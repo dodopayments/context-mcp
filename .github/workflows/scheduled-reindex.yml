@@ -1,12 +1,18 @@
 name: Scheduled Documentation Reindex
 
-on:
-  # Run every 3 days at 2 AM UTC (7:30 AM IST)
-  schedule:
-    - cron: '0 2 */3 * *'
+# Daily incremental reindex; content-hash manifest persisted via GitHub Actions
+# cache across runs (no external credentials required).
+# Dispatch with full=true to force a clear+rebuild.
 
-  # Allow manual trigger from GitHub UI
+on:
+  schedule:
+    - cron: '0 2 * * *' # daily, 2 AM UTC
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Force a FULL reindex (clear + rebuild, reseed manifest)'
+        type: boolean
+        default: false
 
 jobs:
   reindex:
@@ -26,9 +32,30 @@ jobs:
       - name: Install dependencies
         run: npm clean-install
 
-      - name: Run full documentation reindex
+      - name: Restore manifest from cache
+        if: ${{ inputs.full != true }}
+        uses: actions/cache/restore@v4
+        with:
+          path: data/reindex-manifest.json
+          key: reindex-manifest-${{ github.run_id }}
+          restore-keys: |
+            reindex-manifest-
+
+      - name: Reindex
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npm run reindex:dodo
+        run: |
+          if [ "${{ inputs.full }}" = "true" ]; then
+            npm run reindex:dodo
+          else
+            npm run reindex:dodo -- --incremental
+          fi
+
+      - name: Save manifest to cache
+        if: ${{ success() }}
+        uses: actions/cache/save@v4
+        with:
+          path: data/reindex-manifest.json
+          key: reindex-manifest-${{ github.run_id }}
