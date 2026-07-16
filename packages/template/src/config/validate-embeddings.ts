@@ -35,8 +35,11 @@ export interface ModelSpec {
 }
 
 export interface ProviderSpec {
-  /** Environment variable holding the provider's API key. */
-  apiKeyEnvVar: string;
+  /**
+   * Environment variable holding the provider's API key, or `null` for keyless
+   * providers (e.g. a local Ollama server) that require no API key at all.
+   */
+  apiKeyEnvVar: string | null;
   /** Known models keyed by model id. */
   models: Record<string, ModelSpec>;
 }
@@ -81,6 +84,34 @@ export const EMBEDDING_PROVIDERS: Record<EmbeddingProvider, ProviderSpec> = {
     models: {
       'gemini-embedding-2-preview': { dimensions: range(1, 3072, 3072) },
     },
+  },
+  cohere: {
+    apiKeyEnvVar: 'COHERE_API_KEY',
+    models: {
+      'embed-v4.0': { dimensions: fixed([256, 512, 1024, 1536], 1536) },
+      'embed-english-v3.0': { dimensions: fixed([1024], 1024) },
+      'embed-english-light-v3.0': { dimensions: fixed([384], 384) },
+      'embed-multilingual-v3.0': { dimensions: fixed([1024], 1024) },
+      'embed-multilingual-light-v3.0': { dimensions: fixed([384], 384) },
+    },
+  },
+  voyage: {
+    apiKeyEnvVar: 'VOYAGE_API_KEY',
+    models: {
+      'voyage-4-large': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-4': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-4-lite': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-code-3': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3.5': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3.5-lite': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3-large': { dimensions: fixed([256, 512, 1024, 2048], 1024) },
+      'voyage-3': { dimensions: fixed([1024], 1024) },
+    },
+  },
+  // Open model ecosystem (keyless, local) — no static registry; dimension trusted.
+  ollama: {
+    apiKeyEnvVar: null,
+    models: {},
   },
 };
 
@@ -170,8 +201,9 @@ export function validateEmbeddingConfig(
     }
   }
 
-  // 3. Optional env-var presence check.
-  if (options.checkEnv) {
+  // 3. Optional env-var presence check. Keyless providers (apiKeyEnvVar
+  //    === null, e.g. a local Ollama server) have nothing to check.
+  if (options.checkEnv && providerSpec.apiKeyEnvVar) {
     const env = options.env ?? process.env;
     if (!env[providerSpec.apiKeyEnvVar]) {
       errors.push(

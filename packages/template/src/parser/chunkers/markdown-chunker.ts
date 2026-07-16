@@ -104,6 +104,43 @@ function buildHeading(section: FlatSection, contextName: string): string {
 }
 
 // =============================================================================
+// CANONICAL URL EXTRACTION
+// =============================================================================
+
+// Matches an llms.txt-style canonical URL marker at the start of a line, e.g.
+// `URL: https://x/y`, `**URL**: https://x/y`, or `- **URL**: https://x/y`.
+const CANONICAL_URL_MARKER =
+  /^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?URL(?:\*\*)?[ \t]*:[ \t]*(https?:\/\/[^\s)]+)/im;
+
+export function extractCanonicalUrl(content: string): string | undefined {
+  const match = content.match(CANONICAL_URL_MARKER);
+  if (!match) return undefined;
+  return match[1].replace(/[.,;]+$/, '');
+}
+
+function stripDocExtension(file: string): string {
+  return file.replace(/\.(?:md|mdx|txt)$/i, '');
+}
+
+// File-level source URL used when a chunk has no inline canonical URL marker.
+// followLinks pages mirror their URL path on disk, so map the file back to its
+// page URL; a plain url source is one synthetic file, so use the site root
+// rather than that filename.
+export function buildFileSourceUrl(source: SourceConfig, file: string): string {
+  const baseUrl = source.baseUrl?.replace(/\/$/, '');
+  if (source.repository) {
+    return `https://github.com/${source.repository}/blob/main/${file}`;
+  }
+  if (source.type === 'url') {
+    if (source.followLinks) {
+      return baseUrl ? `${baseUrl}/${stripDocExtension(file)}` : '';
+    }
+    return baseUrl ?? '';
+  }
+  return baseUrl ? `${baseUrl}/${file}` : '';
+}
+
+// =============================================================================
 // LARGE SECTION SPLITTING
 // =============================================================================
 
@@ -179,7 +216,7 @@ function parseReadme(
     content: section.content,
     metadata: {
       description: extractDescription(section.content),
-      sourceUrl,
+      sourceUrl: extractCanonicalUrl(section.content) ?? sourceUrl,
       repository: contextName,
       language,
     },
@@ -492,12 +529,7 @@ export function parseMarkdownSource(
     const fullPath = path.join(localPath, file);
     const content = fs.readFileSync(fullPath, 'utf-8');
 
-    // Build source URL
-    const sourceUrl = source.repository
-      ? `https://github.com/${source.repository}/blob/main/${file}`
-      : source.baseUrl
-      ? `${source.baseUrl.replace(/\/$/, '')}/${file}`
-      : '';
+    const sourceUrl = buildFileSourceUrl(source, file);
 
     // Determine contextual name
     const dirName = path.dirname(file);

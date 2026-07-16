@@ -5,8 +5,8 @@
  * Uses Cloudflare's agents framework for proper MCP support.
  *
  * Environment variables (set via wrangler secret):
- * - GEMINI_API_KEY: Required when EMBEDDING_PROVIDER=gemini (default)
- * - OPENAI_API_KEY: Required when EMBEDDING_PROVIDER=openai
+ * - OPENAI_API_KEY: Required when EMBEDDING_PROVIDER=openai (default)
+ * - GEMINI_API_KEY: Required when EMBEDDING_PROVIDER=gemini
  * - PINECONE_API_KEY: Required for vector search
  */
 
