@@ -8,6 +8,8 @@ import {
   urlToFilename,
   disambiguateFilename,
   isFetchAllowed,
+  parseRobotsDisallow,
+  isUrlDisallowed,
   isAcceptableContentType,
   URL_MAP_FILENAME,
   fetchWebsiteSource,
@@ -191,6 +193,68 @@ describe('isFetchAllowed (SSRF guard)', () => {
   });
 });
 
+describe('parseRobotsDisallow', () => {
+  it('collects Disallow rules under User-agent: *', () => {
+    const robots = `User-agent: *\nDisallow: /private/\nDisallow: /tmp`;
+    expect(parseRobotsDisallow(robots)).toEqual(['/private/', '/tmp']);
+  });
+
+  it('ignores rules for other user agents', () => {
+    const robots = `User-agent: BadBot\nDisallow: /\n\nUser-agent: *\nDisallow: /private/`;
+    expect(parseRobotsDisallow(robots)).toEqual(['/private/']);
+  });
+
+  it('handles a group headed by multiple user-agent lines', () => {
+    const robots = `User-agent: Googlebot\nUser-agent: *\nDisallow: /shared/`;
+    expect(parseRobotsDisallow(robots)).toEqual(['/shared/']);
+  });
+
+  it('starts a fresh group at a later User-agent line', () => {
+    // The * group ends when a new group (BadBot) begins; its rules don't leak.
+    const robots = `User-agent: *\nDisallow: /a\n\nUser-agent: BadBot\nDisallow: /b`;
+    expect(parseRobotsDisallow(robots)).toEqual(['/a']);
+  });
+
+  it('ignores comments and blank lines', () => {
+    const robots = `# global rules\nUser-agent: * # everyone\n\nDisallow: /private/ # keep out`;
+    expect(parseRobotsDisallow(robots)).toEqual(['/private/']);
+  });
+
+  it('skips empty Disallow (allow-all) directives', () => {
+    expect(parseRobotsDisallow(`User-agent: *\nDisallow:`)).toEqual([]);
+  });
+
+  it('returns no rules for empty content', () => {
+    expect(parseRobotsDisallow('')).toEqual([]);
+  });
+});
+
+describe('isUrlDisallowed', () => {
+  it('blocks URLs whose path starts with a disallowed prefix', () => {
+    expect(isUrlDisallowed('https://x.com/private/page', ['/private/'])).toBe(true);
+  });
+
+  it('allows URLs that match no rule', () => {
+    expect(isUrlDisallowed('https://x.com/docs/intro', ['/private/'])).toBe(false);
+  });
+
+  it('does not treat a rule as a substring match past the path start', () => {
+    expect(isUrlDisallowed('https://x.com/docs/private/', ['/private/'])).toBe(false);
+  });
+
+  it('matches rules against the query string too', () => {
+    expect(isUrlDisallowed('https://x.com/search?q=x', ['/search?'])).toBe(true);
+  });
+
+  it('blocks everything under a root disallow', () => {
+    expect(isUrlDisallowed('https://x.com/any/page', ['/'])).toBe(true);
+  });
+
+  it('allows everything when there are no rules', () => {
+    expect(isUrlDisallowed('https://x.com/private/page', [])).toBe(false);
+  });
+});
+
 describe('isAcceptableContentType', () => {
   it('accepts html and xml content types', () => {
     expect(isAcceptableContentType('text/html; charset=utf-8', 'https://x.com/a')).toBe(true);
@@ -344,7 +408,7 @@ describe('fetchWebsiteSource URL map sidecar', () => {
   });
 });
 
-describe('fetchWebsiteSource content-type handling', () => {
+describe('fetchWebsiteSource robots.txt and content-type handling', () => {
   const realFetch = globalThis.fetch;
   let staged: string | undefined;
 
@@ -370,6 +434,123 @@ describe('fetchWebsiteSource content-type handling', () => {
   function textResponse(body: string): Response {
     return new Response(body, { status: 200, headers: { 'content-type': 'text/plain' } });
   }
+
+  it('skips sitemap pages disallowed by robots.txt', async () => {
+    const origin = 'https://docs.example.com';
+    const sitemap = `<?xml version="1.0"?><urlset>
+      <url><loc>${origin}/docs/intro</loc></url>
+      <url><loc>${origin}/private/secret</loc></url>
+    </urlset>`;
+
+    const fetched: string[] = [];
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      fetched.push(url);
+      if (url.endsWith('/robots.txt')) return textResponse(`User-agent: *\nDisallow: /private/`);
+      if (url.endsWith('/sitemap.xml')) return xmlResponse(sitemap);
+      if (url.includes('/docs/intro')) return htmlResponse(page('Intro'));
+      if (url.includes('/private/secret')) return htmlResponse(page('Secret'));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const source = {
+      name: 'robots-sitemap',
+      type: 'website',
+      parser: 'html',
+      url: `${origin}/`,
+      maxPages: 10,
+      crawlDepth: 1,
+    } as SourceConfig;
+
+    const result = await fetchWebsiteSource(source);
+    staged = result.localPath;
+
+    const map = JSON.parse(
+      fs.readFileSync(path.join(result.localPath, URL_MAP_FILENAME), 'utf-8')
+    ) as Record<string, string>;
+    expect(Object.values(map)).toContain(`${origin}/docs/intro`);
+    expect(Object.values(map)).not.toContain(`${origin}/private/secret`);
+    // The disallowed page must never even be requested.
+    expect(fetched.some(u => u.includes('/private/secret'))).toBe(false);
+
+    result.cleanup();
+  });
+
+  it('skips crawled pages disallowed by robots.txt during BFS', async () => {
+    const origin = 'https://docs.example.com';
+    const home =
+      `<html><head><title>Home</title></head><body><main><h2>Home</h2>` +
+      `<p>This paragraph links to <a href="/docs/a">docs</a> and to a ` +
+      `<a href="/private/secret">private page</a> the crawler must not touch.</p>` +
+      `</main></body></html>`;
+
+    const fetched: string[] = [];
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      fetched.push(url);
+      if (url.endsWith('/robots.txt')) return textResponse(`User-agent: *\nDisallow: /private/`);
+      if (url.endsWith('/sitemap.xml')) return new Response('not found', { status: 404 });
+      if (url === `${origin}/`) return htmlResponse(home);
+      if (url.includes('/docs/a')) return htmlResponse(page('Docs A'));
+      if (url.includes('/private/secret')) return htmlResponse(page('Secret'));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const source = {
+      name: 'robots-crawl',
+      type: 'website',
+      parser: 'html',
+      url: `${origin}/`,
+      maxPages: 10,
+      crawlDepth: 2,
+    } as SourceConfig;
+
+    const result = await fetchWebsiteSource(source);
+    staged = result.localPath;
+
+    const map = JSON.parse(
+      fs.readFileSync(path.join(result.localPath, URL_MAP_FILENAME), 'utf-8')
+    ) as Record<string, string>;
+    expect(Object.values(map)).toContain(`${origin}/docs/a`);
+    expect(Object.values(map)).not.toContain(`${origin}/private/secret`);
+    expect(fetched.some(u => u.includes('/private/secret'))).toBe(false);
+
+    result.cleanup();
+  });
+
+  it('crawls normally when robots.txt is missing', async () => {
+    const origin = 'https://docs.example.com';
+    const sitemap = `<?xml version="1.0"?><urlset>
+      <url><loc>${origin}/docs/intro</loc></url>
+    </urlset>`;
+
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.endsWith('/robots.txt')) return new Response('not found', { status: 404 });
+      if (url.endsWith('/sitemap.xml')) return xmlResponse(sitemap);
+      if (url.includes('/docs/intro')) return htmlResponse(page('Intro'));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const source = {
+      name: 'no-robots',
+      type: 'website',
+      parser: 'html',
+      url: `${origin}/`,
+      maxPages: 10,
+      crawlDepth: 1,
+    } as SourceConfig;
+
+    const result = await fetchWebsiteSource(source);
+    staged = result.localPath;
+
+    const map = JSON.parse(
+      fs.readFileSync(path.join(result.localPath, URL_MAP_FILENAME), 'utf-8')
+    ) as Record<string, string>;
+    expect(Object.values(map)).toContain(`${origin}/docs/intro`);
+
+    result.cleanup();
+  });
 
   it('drops a page served with an empty content-type unless its URL looks like html', async () => {
     const origin = 'https://docs.example.com';

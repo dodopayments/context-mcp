@@ -176,6 +176,60 @@ export function isFetchAllowed(url: string, allowedOrigin?: string): boolean {
 }
 
 /**
+ * Extract `Disallow` path prefixes that apply to `User-agent: *` from a
+ * robots.txt document. Deliberately minimal: only `*` groups are honored,
+ * rules are plain path prefixes (no `*`/`$` wildcard expansion), and `Allow`
+ * directives are ignored — so this can only be MORE restrictive than a full
+ * robots implementation, never less.
+ */
+export function parseRobotsDisallow(robotsTxt: string): string[] {
+  const rules: string[] = [];
+  let groupApplies = false;
+  // Consecutive User-agent lines head a single group; any other directive
+  // closes the header so a later User-agent line starts a NEW group.
+  let inGroupHeader = false;
+
+  for (const rawLine of robotsTxt.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    const sep = line.indexOf(':');
+    if (sep === -1) continue;
+    const field = line.slice(0, sep).trim().toLowerCase();
+    const value = line.slice(sep + 1).trim();
+
+    if (field === 'user-agent') {
+      if (inGroupHeader) {
+        groupApplies = groupApplies || value === '*';
+      } else {
+        groupApplies = value === '*';
+        inGroupHeader = true;
+      }
+    } else {
+      inGroupHeader = false;
+      // An empty Disallow value means "allow everything" — skip it.
+      if (field === 'disallow' && groupApplies && value) rules.push(value);
+    }
+  }
+
+  return rules;
+}
+
+/**
+ * Whether a URL's path (+ query) starts with any robots.txt Disallow prefix.
+ */
+export function isUrlDisallowed(url: string, disallowRules: string[]): boolean {
+  if (disallowRules.length === 0) return false;
+  let pathAndQuery: string;
+  try {
+    const parsed = new URL(url);
+    pathAndQuery = parsed.pathname + parsed.search;
+  } catch {
+    return false;
+  }
+  return disallowRules.some(rule => pathAndQuery.startsWith(rule));
+}
+
+/**
  * Whether a response should be collected as a document. HTML/XML content
  * types always qualify; other explicit content types never do. A MISSING
  * content-type is only trusted when the URL itself looks like a document
@@ -225,6 +279,31 @@ async function fetchText(url: string, allowedOrigin?: string): Promise<string | 
 }
 
 /**
+ * Fetch and parse `<origin>/robots.txt`, returning the Disallow prefixes for
+ * `User-agent: *`. Bypasses `fetchText` because robots.txt is text/plain. A
+ * missing, failing, or unreachable robots.txt yields no rules (crawl allowed),
+ * matching common lenient-crawler behavior.
+ */
+async function fetchRobotsRules(origin: string): Promise<string[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${origin}/robots.txt`, {
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+    if (!res.ok) return [];
+    // A robots.txt that redirects off-origin is not ours to obey.
+    if (res.url && !isFetchAllowed(res.url, origin)) return [];
+    return parseRobotsDisallow(await res.text());
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Discover page URLs via sitemap.xml (one level of sitemap-index recursion),
  * returning null if no sitemap is found so the caller can fall back to crawling.
  *
@@ -265,12 +344,14 @@ function sleep(ms: number): Promise<void> {
 /**
  * Breadth-first same-origin crawl from a base URL, bounded by depth and count.
  * Inserts a small politeness delay between requests so we don't hammer the
- * target, and dedups within a level so the same link isn't queued repeatedly.
+ * target, dedups within a level so the same link isn't queued repeatedly, and
+ * skips URLs disallowed by robots.txt.
  */
 async function discoverViaCrawl(
   baseUrl: string,
   maxPages: number,
   maxDepth: number,
+  disallowRules: string[] = [],
   delayMs: number = DEFAULT_CRAWL_DELAY_MS
 ): Promise<{ url: string; html: string }[]> {
   const results: { url: string; html: string }[] = [];
@@ -289,6 +370,7 @@ async function discoverViaCrawl(
       if (results.length >= maxPages) break;
       if (visited.has(url)) continue;
       visited.add(url);
+      if (isUrlDisallowed(url, disallowRules)) continue;
 
       // Politeness: space out requests (skip the delay before the very first).
       if (results.length > 0 && delayMs > 0) await sleep(delayMs);
@@ -341,6 +423,10 @@ export async function fetchWebsiteSource(source: SourceConfig): Promise<FetchedS
   if (existsSync(localPath)) rmSync(localPath, { recursive: true });
   mkdirSync(localPath, { recursive: true });
 
+  // Honor the site's robots.txt (Disallow under User-agent: *) for all page
+  // downloads, whichever discovery path finds them.
+  const disallowRules = await fetchRobotsRules(origin);
+
   // 1. Try sitemap-based discovery first.
   const sitemapUrl = source.sitemap || `${origin}/sitemap.xml`;
   const sitemapUrls = await discoverViaSitemap(sitemapUrl, maxPages, origin);
@@ -350,6 +436,7 @@ export async function fetchWebsiteSource(source: SourceConfig): Promise<FetchedS
     for (const url of sitemapUrls) {
       if (pages.length >= maxPages) break;
       if (!isSameOrigin(url, origin)) continue;
+      if (isUrlDisallowed(url, disallowRules)) continue;
       // Politeness: space out sitemap page downloads too.
       if (pages.length > 0 && DEFAULT_CRAWL_DELAY_MS > 0) await sleep(DEFAULT_CRAWL_DELAY_MS);
       const html = await fetchText(url, origin);
@@ -359,7 +446,7 @@ export async function fetchWebsiteSource(source: SourceConfig): Promise<FetchedS
 
   // 2. Fall back to crawling if the sitemap yielded nothing.
   if (pages.length === 0) {
-    pages = await discoverViaCrawl(baseUrl, maxPages, crawlDepth);
+    pages = await discoverViaCrawl(baseUrl, maxPages, crawlDepth, disallowRules);
   }
 
   if (pages.length === 0) {
