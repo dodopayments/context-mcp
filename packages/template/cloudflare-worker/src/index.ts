@@ -249,6 +249,25 @@ async function searchDocsQdrant(env: Env, query: string, limit?: number): Promis
   });
 }
 
+/**
+ * Search using the configured vector backend (`VECTORDB_PROVIDER`, default
+ * pinecone). Both the MCP tool and the REST /search endpoint go through here,
+ * so switching providers applies to every serving surface. The Pinecone client
+ * is only constructed on the Pinecone path — a Qdrant-only deployment doesn't
+ * need a PINECONE_API_KEY.
+ */
+async function searchWithProvider(
+  env: Env,
+  query: string,
+  limit?: number
+): Promise<SearchResult[]> {
+  const provider = (env.VECTORDB_PROVIDER || 'pinecone').toLowerCase();
+  if (provider === 'qdrant') {
+    return searchDocsQdrant(env, query, limit);
+  }
+  return searchDocs(new Pinecone({ apiKey: env.PINECONE_API_KEY }), env, query, limit);
+}
+
 async function searchDocs(
   pinecone: Pinecone,
   env: Env,
@@ -330,12 +349,6 @@ export class ContextMCP extends McpAgent<Env> {
     const serverName = env.SERVER_NAME || 'contextmcp';
     const description = env.SERVER_DESCRIPTION || 'Search documentation';
 
-    const vectorProvider = (env.VECTORDB_PROVIDER || 'pinecone').toLowerCase();
-    // Only construct the Pinecone client when it's the active backend, so a
-    // Qdrant-only deployment doesn't require a PINECONE_API_KEY.
-    const pinecone =
-      vectorProvider === 'qdrant' ? null : new Pinecone({ apiKey: env.PINECONE_API_KEY });
-
     this.server.registerTool(
       'search_docs',
       {
@@ -359,10 +372,7 @@ export class ContextMCP extends McpAgent<Env> {
       },
       async ({ query, limit }) => {
         try {
-          const results =
-            vectorProvider === 'qdrant'
-              ? await searchDocsQdrant(env, query, limit)
-              : await searchDocs(pinecone!, env, query, limit);
+          const results = await searchWithProvider(env, query, limit);
           const formatted = formatResults(results, query, serverName);
 
           return {
@@ -549,8 +559,7 @@ export default {
           });
         }
 
-        const pinecone = new Pinecone({ apiKey: env.PINECONE_API_KEY });
-        const results = await searchDocs(pinecone, env, query, limit);
+        const results = await searchWithProvider(env, query, limit);
         const formatted = formatResults(results, query, serverName);
 
         return new Response(formatted, {
