@@ -1,118 +1,54 @@
 @import "tailwindcss";
+@import "fumadocs-ui/css/black.css";
+@import "fumadocs-ui/css/preset.css";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
-  --accent-primary: #60A5FA;
-  --accent-secondary: #3B82F6;
-  --card-bg: #0A0A0A;
-  --border: oklch(0.922 0 0);
-  color-scheme: dark;
-
-  /* Fumadocs Dark Theme Variables */
-  --fd-background: 0 0% 0%;
-  --fd-foreground: 0 0% 100%;
-  --fd-muted: 0 0% 6%;
-  --fd-muted-foreground: 0 0% 60%;
-  --fd-popover: 0 0% 4%;
-  --fd-popover-foreground: 0 0% 100%;
-  --fd-card: 0 0% 4%;
-  --fd-card-foreground: 0 0% 100%;
-  --fd-border: 0 0% 15%;
-  --fd-primary: 217 91% 68%; /* Blue */
-  --fd-primary-foreground: 0 0% 0%;
-  --fd-secondary: 0 0% 10%;
-  --fd-secondary-foreground: 0 0% 100%;
-  --fd-accent: 217 91% 68%; /* Blue */
-  --fd-accent-foreground: 0 0% 0%;
-  --fd-ring: 217 91% 68%; /* Blue */
-  --fd-radius: 0.5rem;
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-accent-primary: var(--accent-primary);
-  --color-accent-secondary: var(--accent-secondary);
-  --color-card-bg: var(--card-bg);
-  --color-border: var(--border);
+@theme {
+  --color-brand: #60a5fa;
+  --color-brand-dim: #3b82f6;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
 }
 
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/*
+ * fumadocs 16 reads --color-fd-* as full color values (the old `0 0% 0%` HSL
+ * triplets it replaced are inert). Site is dark-only via html.dark, so :root
+ * and .dark carry the same palette.
+ */
+:root,
+.dark {
+  color-scheme: dark;
+
+  --color-fd-background: hsl(0 0% 0%);
+  --color-fd-foreground: hsl(0 0% 98%);
+  --color-fd-muted: hsl(0 0% 6%);
+  --color-fd-muted-foreground: hsl(0 0% 58%);
+  --color-fd-popover: hsl(0 0% 4%);
+  --color-fd-popover-foreground: hsl(0 0% 98%);
+  --color-fd-card: hsl(0 0% 4%);
+  --color-fd-card-foreground: hsl(0 0% 98%);
+  --color-fd-border: hsl(0 0% 100% / 0.08);
+  --color-fd-primary: hsl(213 94% 68%);
+  --color-fd-primary-foreground: hsl(0 0% 0%);
+  --color-fd-secondary: hsl(0 0% 8%);
+  --color-fd-secondary-foreground: hsl(0 0% 98%);
+  --color-fd-accent: hsl(0 0% 10%);
+  --color-fd-accent-foreground: hsl(0 0% 100%);
+  --color-fd-ring: hsl(213 94% 68% / 0.5);
 }
 
-/* Technical Noir Texture */
+@layer base {
+  body {
+    @apply flex min-h-screen flex-col bg-black text-white;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* --- Surface texture, shared with the landing page --- */
+
 .noise-bg {
   position: fixed;
   inset: 0;
@@ -123,123 +59,121 @@ body {
   mix-blend-mode: overlay;
 }
 
-/* Glow Utilities */
 .glow-text {
-  text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);
+  text-shadow: 0 0 20px rgb(96 165 250 / 0.3);
 }
 
 .glow-box {
-  box-shadow: 0 0 40px -10px rgba(96, 165, 250, 0.2);
+  box-shadow: 0 0 40px -10px rgb(96 165 250 / 0.2);
 }
 
-/* Glassmorphism that actually looks good */
 .glass-panel {
-  background: rgba(10, 10, 10, 0.6);
+  background: rgb(10 10 10 / 0.6);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgb(255 255 255 / 0.08);
 }
 
-/* Fumadocs Custom Styling */
-[data-fumadocs-layout] {
-  --fd-background: 0 0% 0% !important;
+/* ===================================================================
+ * Docs chrome
+ *
+ * Accent marks function (where you are, how severe a callout is). It does
+ * not decorate — docs are for reading, so the page stays quiet.
+ * =================================================================== */
+
+/* Active page: a blue rail, no glow, no gradient wash. */
+#nd-sidebar a[data-active="true"] {
+  position: relative;
+  color: var(--color-brand);
 }
 
-/* Override any light mode remnants */
-.fumadocs-sidebar {
-  background: hsl(var(--fd-background)) !important;
-  border-right: 1px solid hsl(var(--fd-border)) !important;
+#nd-sidebar a[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0.25rem;
+  inset-inline-start: -0.5rem;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-brand);
 }
 
-/* Style the search bar */
-.fumadocs-search button {
-  background: hsl(var(--fd-muted)) !important;
-  border: 1px solid hsl(var(--fd-border)) !important;
-  color: hsl(var(--fd-muted-foreground)) !important;
+#nd-sidebar a:not([data-active="true"]):hover {
+  color: hsl(0 0% 92%);
 }
 
-.fumadocs-search button:hover {
-  background: hsl(var(--fd-secondary)) !important;
-  border-color: hsl(var(--fd-primary)) !important;
+/* --- Typography --- */
+
+#nd-page h1 {
+  letter-spacing: -0.03em;
 }
 
-/* Active sidebar links with lime green */
-.fumadocs-sidebar a[data-active="true"] {
-  background: hsl(var(--fd-secondary)) !important;
-  color: hsl(var(--fd-primary)) !important;
-  border-left: 2px solid hsl(var(--fd-primary)) !important;
+#nd-page h2,
+#nd-page h3 {
+  letter-spacing: -0.02em;
 }
 
-.fumadocs-sidebar a:hover {
-  background: hsl(var(--fd-secondary)) !important;
+/* Header rule: a single divider under the title + subtitle, tight to both.
+   Overrides the subtitle's default mb-8 so the gap doesn't balloon. */
+#nd-page h1 + .text-fd-muted-foreground {
+  margin-bottom: 0;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-fd-border);
 }
 
-/* Links in content */
-.fumadocs-article a {
-  color: hsl(var(--fd-primary)) !important;
-  text-decoration: none;
+/* First body block sits close under the header rule, whatever its tag. */
+#nd-page .prose > :first-child {
+  margin-top: 1.5rem;
 }
 
-.fumadocs-article a:hover {
-  text-decoration: underline;
+/* Section breaks between h2s come from whitespace, not per-heading rules. */
+#nd-page .prose h2 {
+  margin-top: 3rem;
 }
 
-/* Code blocks */
-.fumadocs-article pre {
-  background: hsl(var(--fd-muted)) !important;
-  border: 1px solid hsl(var(--fd-border)) !important;
+#nd-page .prose a:not([data-card]) {
+  color: var(--color-brand);
+  text-decoration-color: rgb(96 165 250 / 0.35);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms ease;
 }
 
-/* Force dark mode - disable light mode */
-html:not(.dark) {
-  color-scheme: dark !important;
+#nd-page .prose a:not([data-card]):hover {
+  text-decoration-color: var(--color-brand);
 }
 
-html:not(.dark),
-html:not(.dark) body,
-html:not(.dark) [data-fumadocs-layout] {
-  background: #000000 !important;
-  color: #ffffff !important;
+/* Inline code: a neutral chip. Blue here would compete with real links. */
+#nd-page .prose :not(pre) > code {
+  background: rgb(255 255 255 / 0.06);
+  color: hsl(0 0% 88%);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* --- Code blocks --- */
+
+#nd-page figure:has(pre) {
+  border-color: var(--color-fd-border);
+  background: #050505;
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+#nd-page figure:has(pre) figcaption {
+  background: rgb(255 255 255 / 0.02);
+  border-bottom: 1px solid var(--color-fd-border);
+}
+
+/* --- Tables --- */
+
+#nd-page .prose table {
+  border: 1px solid var(--color-fd-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+#nd-page .prose th {
+  background: rgb(255 255 255 / 0.03);
+  font-weight: 600;
+  color: hsl(0 0% 92%);
+}
+
+/* --- Cards (navigation only) --- */
+
+#nd-page a[data-card]:hover {
+  border-color: rgb(96 165 250 / 0.35);
 }

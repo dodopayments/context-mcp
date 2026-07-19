@@ -1,5 +1,5 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
-import { Github } from 'lucide-react';
+import { Home } from 'lucide-react';
 import Image from 'next/image';
 
 export const baseOptions: BaseLayoutProps = {
@@ -9,22 +9,23 @@ export const baseOptions: BaseLayoutProps = {
                 <Image
                     src="/SVG/Brandmark.svg"
                     alt="ContextMCP"
-                    width={28}
-                    height={28}
+                    width={26}
+                    height={26}
                 />
-                <span className="text-fd-muted-foreground">/</span>
-                <span className="font-medium">ContextMCP</span>
+                <span className="font-light text-zinc-600">/</span>
+                <span className="font-semibold tracking-tight">ContextMCP</span>
             </div>
         ),
         transparentMode: 'none',
     },
+    // Renders its own GitHub icon — don't add a second one to `links`.
     githubUrl: 'https://github.com/dodopayments/context-mcp',
     links: [
         {
-            icon: <Github className="size-5" />,
-            text: 'GitHub',
-            url: 'https://github.com/dodopayments/context-mcp',
-            external: true,
+            type: 'icon',
+            icon: <Home className="size-5" />,
+            text: 'Home',
+            url: '/',
         },
     ],
 };
