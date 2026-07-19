@@ -1,6 +1,7 @@
 ---
 title: Integrations
 description: Connect ContextMCP to AI editors and custom agents
+icon: Plug
 ---
 
 ContextMCP provides two ways to integrate:
@@ -12,7 +13,9 @@ ContextMCP provides two ways to integrate:
 
 The Model Context Protocol is the standard way AI coding assistants fetch external context. Once you've deployed your ContextMCP server, connect it to your AI editor with the configuration below.
 
-### Cursor
+<Tabs items={['Cursor', 'Windsurf', 'Claude Desktop']}>
+
+<Tab value="Cursor">
 
 Add to `~/.cursor/mcp.json`:
 
@@ -28,7 +31,9 @@ Add to `~/.cursor/mcp.json`:
 
 Replace `your-worker.workers.dev` with your actual Cloudflare Worker URL. Restart Cursor to apply changes.
 
-### Windsurf
+</Tab>
+
+<Tab value="Windsurf">
 
 Add to `~/.codeium/windsurf/mcp_config.json`:
 
@@ -44,7 +49,9 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 
 Replace `your-worker.workers.dev` with your actual Cloudflare Worker URL. Restart Windsurf to apply changes.
 
-### Claude Desktop
+</Tab>
+
+<Tab value="Claude Desktop">
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
@@ -60,6 +67,10 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 ```
 
 Replace `your-worker.workers.dev` with your actual Cloudflare Worker URL. Restart Claude Desktop to apply changes.
+
+</Tab>
+
+</Tabs>
 
 ---
 

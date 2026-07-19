@@ -1,6 +1,7 @@
 ---
 title: Introduction
 description: Self-hosted MCP server for your documentation
+icon: BookOpen
 ---
 
 **ContextMCP** is a self-hosted alternative to Context7. It allows your AI Agents to search across your documentation, repositories and API references using the [Model Context Protocol](https://modelcontextprotocol.io/) or REST API endpoint.
@@ -34,36 +35,7 @@ The system:
 
 ## Architecture
 
-```
-┌─────────────┐
-│   Sources   │  GitHub, GitLab, Local, URL
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Parsers   │  MDX, Markdown, OpenAPI, HTML
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Chunkers  │  Split into optimal sizes
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ Embeddings  │  OpenAI, Gemini, Cohere, Voyage, or Ollama
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  Pinecone   │  Vector storage & search
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Worker    │  Cloudflare Workers (MCP + REST)
-└─────────────┘
-```
+<Pipeline />
 
 ## Next Steps
 

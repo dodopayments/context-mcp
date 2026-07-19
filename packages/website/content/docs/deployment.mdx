@@ -1,17 +1,22 @@
 ---
 title: Deployment
 description: Deploy ContextMCP to production
+icon: Cloud
 ---
 
-ContextMCP runs on Cloudflare Workers for low-latency edge deployment.
-
 ## Cloudflare Workers
+
+ContextMCP runs on Cloudflare Workers for low-latency edge deployment.
 
 ### Prerequisites
 
 - [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier works)
 - Wrangler CLI installed: `npm install -g wrangler`
 - Indexed documentation (run `npm run reindex` first)
+
+<Steps>
+
+<Step>
 
 ### Configure
 
@@ -28,6 +33,10 @@ Edit `cloudflare-worker/wrangler.jsonc`:
 }
 ```
 
+</Step>
+
+<Step>
+
 ### Set Secrets
 
 ```bash
@@ -37,6 +46,10 @@ wrangler secret put PINECONE_API_KEY
 wrangler secret put API_KEY  # Optional: for authenticated access
 ```
 
+</Step>
+
+<Step>
+
 ### Deploy
 
 ```bash
@@ -44,6 +57,10 @@ npm run deploy
 ```
 
 Your server is live at: `https://contextmcp.your-subdomain.workers.dev`
+
+</Step>
+
+<Step>
 
 ### Verify
 
@@ -54,6 +71,10 @@ curl https://your-worker.workers.dev/health
 # Test search
 curl "https://your-worker.workers.dev/search?query=authentication&limit=3"
 ```
+
+</Step>
+
+</Steps>
 
 ## Custom Domain
 
@@ -135,11 +156,13 @@ How it works:
 To make incremental runs work in CI, persist `data/reindex-manifest.json`
 between runs (commit it, or use an actions cache).
 
-> **Important:** `actions/cache` only _writes_ a new entry on a cache **miss**.
-> With a constant `key`, the manifest is saved once and never updated again, so
-> every incremental run would diff against that first, now-stale manifest
-> forever. Use a **rotating key** (unique per run) plus `restore-keys` so each
-> run restores the latest manifest and saves a fresh one:
+<Callout type="warn" title="Important">
+  `actions/cache` only _writes_ a new entry on a cache **miss**.
+  With a constant `key`, the manifest is saved once and never updated again, so
+  every incremental run would diff against that first, now-stale manifest
+  forever. Use a **rotating key** (unique per run) plus `restore-keys` so each
+  run restores the latest manifest and saves a fresh one:
+</Callout>
 
 ```yaml
 - name: Restore reindex manifest
@@ -162,7 +185,9 @@ between runs (commit it, or use an actions cache).
 Alternatively, commit `data/reindex-manifest.json` to the repo after each run —
 simpler and fully deterministic, at the cost of a commit per reindex.
 
-> `--incremental` covers all sources, so it can't be combined with `--source`.
+<Callout type="info">
+  `--incremental` covers all sources, so it can't be combined with `--source`.
+</Callout>
 
 ### Scheduled Reindex
 
@@ -185,7 +210,9 @@ on:
 
 ## Troubleshooting
 
-### "Worker failed to deploy"
+<Accordions type="single">
+
+<Accordion title={'"Worker failed to deploy"'}>
 
 Check that all required secrets are set:
 
@@ -193,12 +220,20 @@ Check that all required secrets are set:
 wrangler secret list
 ```
 
-### "No results from search"
+</Accordion>
+
+<Accordion title={'"No results from search"'}>
 
 1. Verify reindex completed: check for errors in `npm run reindex`
 2. Confirm vectors exist in Pinecone dashboard
 3. Try a broader query
 
-### "Timeout errors"
+</Accordion>
+
+<Accordion title={'"Timeout errors"'}>
 
 Cloudflare Workers have a 30s CPU limit. If indexing large docs, ensure chunking produces reasonable sizes.
+
+</Accordion>
+
+</Accordions>

@@ -1,6 +1,7 @@
 ---
 title: Configuration
 description: ContextMCP is configured through a single config.yaml file in your project root.
+icon: Settings2
 ---
 
 ## Overview
@@ -79,7 +80,9 @@ providers — **OpenAI**, **Google Gemini**, **Cohere**, **Voyage AI**, and
 **Ollama** (local). Pick whichever you prefer; you only need the API key for the
 provider you choose (Ollama needs none).
 
-### OpenAI (default)
+<Tabs items={['OpenAI', 'Google Gemini', 'Cohere', 'Voyage AI', 'Ollama']}>
+
+<Tab value="OpenAI">
 
 ```yaml
 embeddings:
@@ -88,11 +91,11 @@ embeddings:
   dimensions: 3072 # 3072 for large, 1536 for small
 ```
 
-Requires `OPENAI_API_KEY`.
+Requires `OPENAI_API_KEY` environment variable.
 
-**Cost note:** `text-embedding-3-large` costs ~$0.13 per 1M tokens. For a typical docs site (~500 files), expect ~$0.50-1.00 per full reindex.
+</Tab>
 
-### Google Gemini
+<Tab value="Google Gemini">
 
 ```yaml
 embeddings:
@@ -101,9 +104,11 @@ embeddings:
   dimensions: 3072
 ```
 
-Requires `GEMINI_API_KEY`.
+Requires `GEMINI_API_KEY` environment variable.
 
-### Cohere
+</Tab>
+
+<Tab value="Cohere">
 
 ```yaml
 embeddings:
@@ -112,9 +117,11 @@ embeddings:
   dimensions: 1536
 ```
 
-Requires `COHERE_API_KEY`.
+Requires `COHERE_API_KEY` environment variable.
 
-### Voyage AI
+</Tab>
+
+<Tab value="Voyage AI">
 
 ```yaml
 embeddings:
@@ -123,12 +130,11 @@ embeddings:
   dimensions: 1024
 ```
 
-Requires `VOYAGE_API_KEY`.
+Requires `VOYAGE_API_KEY` environment variable.
 
-### Local Embeddings with Ollama
+</Tab>
 
-Run embeddings fully offline with a local [Ollama](https://ollama.com) server —
-no API key, no per-token cost.
+<Tab value="Ollama">
 
 ```yaml
 embeddings:
@@ -139,12 +145,20 @@ embeddings:
     baseUrl: http://localhost:11434 # optional, this is the default
 ```
 
+Run embeddings fully offline with a local [Ollama](https://ollama.com) server. No API key, no per-token cost.
+
 Pull the model first: `ollama pull nomic-embed-text`.
 
-> **Worker note:** The Cloudflare worker generates query embeddings at request
-> time, and Workers cannot reach `localhost`. To serve an Ollama-indexed corpus,
-> expose your Ollama server on a reachable URL and set `OLLAMA_BASE_URL` in the
-> worker — or run the self-hosted Node server (see the self-hosting docs).
+<Callout type="warn" title="Worker note">
+  The Cloudflare worker generates query embeddings at request
+  time, and Workers cannot reach `localhost`. To serve an Ollama-indexed corpus,
+  expose your Ollama server on a reachable URL and set `OLLAMA_BASE_URL` in the
+  worker or run the self-hosted Node server.
+</Callout>
+
+</Tab>
+
+</Tabs>
 
 ### Provider Comparison
 
@@ -156,9 +170,11 @@ Pull the model first: `ollama pull nomic-embed-text`.
 | `voyage` | `voyage-4`                   | `1024`       | `VOYAGE_API_KEY` |
 | `ollama` | `nomic-embed-text`           | `768`        | _(none — local)_ |
 
-> **Note:** The `dimensions` value must match the model you choose, and the
-> Pinecone index must be created with the same dimension. If you switch providers
-> or models with a different dimension, recreate the index.
+<Callout title="Note">
+  The `dimensions` value must match the model you choose, and the
+  Pinecone index must be created with the same dimension. If you switch providers
+  or models with a different dimension, recreate the index.
+</Callout>
 
 The Cloudflare worker selects the provider at runtime via the `EMBEDDING_PROVIDER`,
 `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS` variables in `wrangler.jsonc` — keep
@@ -168,7 +184,9 @@ these in sync with your `config.yaml`.
 
 Define where your documentation lives. You can have multiple sources.
 
-### GitHub Repository
+<Tabs items={['GitHub Repository', 'GitLab Repository']}>
+
+<Tab value="GitHub Repository">
 
 ```yaml
 sources:
@@ -188,7 +206,9 @@ sources:
       - CHANGELOG.md
 ```
 
-### GitLab Repository
+</Tab>
+
+<Tab value="GitLab Repository">
 
 Clone from gitlab.com or a self-hosted GitLab instance. Set `GITLAB_TOKEN` for
 private projects.
@@ -205,6 +225,10 @@ sources:
     baseUrl: https://docs.example.com
     gitlabHost: gitlab.example.com # optional, defaults to gitlab.com
 ```
+
+</Tab>
+
+</Tabs>
 
 ### Parser Types
 
