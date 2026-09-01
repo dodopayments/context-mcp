@@ -10,11 +10,17 @@ match the Worker deployment.
 
 ## Endpoints
 
-| Method | Path      | Description                                          |
-| ------ | --------- | ---------------------------------------------------- |
-| POST   | `/mcp`    | MCP Streamable HTTP transport (stateless)            |
-| POST   | `/search` | REST search: `{ "query": "...", "limit": 10 }`       |
-| GET    | `/health` | Liveness probe                                       |
+| Method     | Path      | Description                                                |
+| ---------- | --------- | ---------------------------------------------------------- |
+| POST       | `/mcp`    | MCP Streamable HTTP transport (stateless)                  |
+| GET / POST | `/search` | REST search — CORS-enabled, same as the Worker's `/search` |
+| GET        | `/health` | Liveness probe                                             |
+
+`/search` accepts either `?query=...&limit=...` (GET) or a JSON body
+`{ "query": "...", "limit": 10 }` (POST), and returns
+`{ "query", "count", "results" }`. Unlike `/mcp` and `/health`, it sends CORS
+headers (`Access-Control-Allow-Origin: *` + preflight `OPTIONS` support) so a
+browser-based client can call it directly, matching the Cloudflare worker.
 
 ## Quick start
 
@@ -30,6 +36,9 @@ Then point an MCP client at `http://localhost:8787/mcp`, or query directly:
 curl -X POST http://localhost:8787/search \
   -H 'Content-Type: application/json' \
   -d '{"query": "how do I authenticate?", "limit": 5}'
+
+# or, from a browser / GET request:
+curl 'http://localhost:8787/search?query=how+do+I+authenticate&limit=5'
 ```
 
 ## Docker
