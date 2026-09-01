@@ -5,9 +5,10 @@
  * long-running Node process you can host anywhere (Docker, a VM, Fly.io, etc.).
  *
  * Endpoints:
- * - POST /mcp     MCP Streamable HTTP transport (stateless)
- * - POST /search  REST search: { "query": "...", "limit": 10 } -> JSON results
- * - GET  /health  Liveness probe
+ * - POST /mcp        MCP Streamable HTTP transport (stateless)
+ * - GET/POST /search REST search (CORS-enabled): ?query=&limit= or
+ *                    { "query": "...", "limit": 10 } -> JSON results
+ * - GET /health      Liveness probe
  */
 
 import 'dotenv/config';
@@ -53,6 +54,18 @@ export function createMcpServer(pinecone: Pinecone, config: ServerConfig): McpSe
 
 /** Maximum accepted request body size (1 MiB) — guards against unbounded reads. */
 const MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * CORS headers for `/search`, matching the Cloudflare worker's REST endpoint
+ * so a browser-based client can call either deployment target directly.
+ * `/mcp` and `/health` intentionally don't get these (same as the worker) —
+ * MCP clients and health probes aren't subject to CORS.
+ */
+const SEARCH_CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 
 /** A client error that should map to a 4xx response rather than a 500. */
 class BadRequestError extends Error {
@@ -117,10 +130,55 @@ function parseSearchBody(body: unknown, maxTopK: number): { query: string; limit
   return { query, limit };
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
+/**
+ * Validate and normalize `?query=&limit=` on a GET /search request. Mirrors
+ * `parseSearchBody`'s rules (non-empty query string; limit, if present, an
+ * integer in [1, maxTopK]) so GET and POST enforce the exact same contract.
+ */
+function parseSearchQueryParams(
+  searchParams: URLSearchParams,
+  maxTopK: number
+): { query: string; limit?: number } {
+  const query = searchParams.get('query');
+  if (query === null || query.trim().length === 0) {
+    throw new BadRequestError('"query" must not be empty');
+  }
+
+  const limitParam = searchParams.get('limit');
+  if (limitParam === null) {
+    return { query };
+  }
+  // Reject anything that isn't a plain integer (no floats, no leading '+',
+  // no whitespace) before parsing, so e.g. "5abc" or "1.5" don't silently
+  // coerce into a number via Number()/parseInt().
+  if (!/^-?\d+$/.test(limitParam)) {
+    throw new BadRequestError('"limit" must be an integer');
+  }
+  const limit = Number(limitParam);
+  if (limit < 1 || limit > maxTopK) {
+    throw new BadRequestError(`"limit" must be between 1 and ${maxTopK}`);
+  }
+  return { query, limit };
+}
+
+function sendJson(
+  res: ServerResponse,
+  status: number,
+  body: unknown,
+  extraHeaders: Record<string, string> = {}
+): void {
   const payload = JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, { 'Content-Type': 'application/json', ...extraHeaders });
   res.end(payload);
+}
+
+/** Cheap check of whether a raw request URL targets /search, for CORS on error paths. */
+function isSearchPath(rawUrl: string | undefined): boolean {
+  try {
+    return new URL(rawUrl || '/', 'http://localhost').pathname === '/search';
+  } catch {
+    return false;
+  }
 }
 
 export function startServer(config: ServerConfig = loadServerConfig()) {
@@ -128,21 +186,25 @@ export function startServer(config: ServerConfig = loadServerConfig()) {
 
   const httpServer = createServer((req, res) => {
     void handleRequest(req, res, pinecone, config).catch(error => {
+      // /search is CORS-enabled (see SEARCH_CORS_HEADERS); its error responses
+      // need the same headers as its success responses, or a browser client
+      // can't read the error body/status either.
+      const corsHeaders = isSearchPath(req.url) ? SEARCH_CORS_HEADERS : {};
       // Client errors (bad/oversized JSON) map to their 4xx status; everything
       // else is an unexpected server fault.
       if (error instanceof BadRequestError) {
-        if (!res.headersSent) sendJson(res, error.status, { error: error.message });
+        if (!res.headersSent) sendJson(res, error.status, { error: error.message }, corsHeaders);
         return;
       }
       console.error('[Server] Unhandled error:', error);
-      if (!res.headersSent) sendJson(res, 500, { error: 'Internal server error' });
+      if (!res.headersSent) sendJson(res, 500, { error: 'Internal server error' }, corsHeaders);
     });
   });
 
   httpServer.listen(config.port, () => {
     console.log(`🚀 ContextMCP server "${config.serverName}" listening on :${config.port}`);
     console.log(`   MCP:    POST http://localhost:${config.port}/mcp`);
-    console.log(`   Search: POST http://localhost:${config.port}/search`);
+    console.log(`   Search: GET/POST http://localhost:${config.port}/search`);
     console.log(`   Health: GET  http://localhost:${config.port}/health`);
   });
 
@@ -163,15 +225,33 @@ async function handleRequest(
     return;
   }
 
-  // REST search endpoint.
-  if (url.pathname === '/search' && req.method === 'POST') {
-    const body = await readJsonBody(req);
+  // REST search endpoint. CORS-enabled (unlike /mcp and /health) so a
+  // browser-based client can call it directly — matching the Cloudflare
+  // worker's /search, which supports the same GET/POST/OPTIONS + headers.
+  if (url.pathname === '/search') {
+    if (req.method === 'OPTIONS') {
+      // CORS preflight: no body, just the allow-list headers.
+      res.writeHead(204, SEARCH_CORS_HEADERS);
+      res.end();
+      return;
+    }
+
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      sendJson(res, 405, { error: 'Method not allowed' }, SEARCH_CORS_HEADERS);
+      return;
+    }
+
     // Validate request shape at the boundary so wrong types become a clean 400
     // instead of a 500 (or NaN topK forwarded to Pinecone). This mirrors the
-    // zod schema enforced on the MCP tool path.
-    const { query, limit } = parseSearchBody(body, config.maxTopK);
+    // zod schema enforced on the MCP tool path, for both GET query params and
+    // a POST JSON body.
+    const { query, limit } =
+      req.method === 'GET'
+        ? parseSearchQueryParams(url.searchParams, config.maxTopK)
+        : parseSearchBody(await readJsonBody(req), config.maxTopK);
+
     const results = await searchDocs(pinecone, config, query, limit);
-    sendJson(res, 200, { query, count: results.length, results });
+    sendJson(res, 200, { query, count: results.length, results }, SEARCH_CORS_HEADERS);
     return;
   }
 

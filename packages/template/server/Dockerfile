@@ -27,6 +27,13 @@ RUN npm ci --omit=dev
 # Copy compiled output.
 COPY --from=build /app/dist ./dist
 
+# Run as the non-root `node` user the base image already ships (uid/gid 1000),
+# not root - limits the blast radius if the process (or a dependency) is ever
+# compromised. `npm ci` above must run as root to write into /app; chown
+# happens after so the app itself runs unprivileged.
+RUN chown -R node:node /app
+USER node
+
 # The server listens on PORT (default 8787).
 EXPOSE 8787
 

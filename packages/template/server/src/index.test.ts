@@ -128,3 +128,88 @@ describe('server request validation', () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * CORS behavior on /search, matching the Cloudflare worker's REST endpoint so
+ * a browser-based client can call either deployment target directly. /mcp and
+ * /health intentionally don't get these headers (not subject to CORS).
+ */
+describe('server /search CORS', () => {
+  let server: Server;
+  let base: string;
+
+  beforeAll(async () => {
+    const config = loadServerConfig({
+      PINECONE_API_KEY: 'pk-test',
+      PINECONE_INDEX_NAME: 'docs',
+      PORT: '0',
+    });
+    server = startServer(config);
+    await new Promise<void>(resolve => server.once('listening', () => resolve()));
+    const { port } = server.address() as AddressInfo;
+    base = `http://127.0.0.1:${port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+
+  it('OPTIONS /search returns a 204 CORS preflight response', async () => {
+    const res = await fetch(`${base}/search`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://example.com',
+        'Access-Control-Request-Method': 'POST',
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('access-control-allow-methods')).toContain('POST');
+    expect(res.headers.get('access-control-allow-methods')).toContain('GET');
+    expect(res.headers.get('access-control-allow-headers')).toContain('Content-Type');
+  });
+
+  it('GET /search with no query returns 400 with CORS headers', async () => {
+    const res = await fetch(`${base}/search`);
+    expect(res.status).toBe(400);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/query/i);
+  });
+
+  it('GET /search with a non-integer limit returns 400', async () => {
+    const res = await fetch(`${base}/search?query=hi&limit=abc`);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/limit/i);
+  });
+
+  it('GET /search with an out-of-range limit returns 400', async () => {
+    for (const limit of ['0', '-5', '999999', '1.5']) {
+      const res = await fetch(`${base}/search?query=hi&limit=${limit}`);
+      expect(res.status, `limit=${limit}`).toBe(400);
+    }
+  });
+
+  it('POST /search error responses (e.g. malformed JSON) still carry CORS headers', async () => {
+    const res = await fetch(`${base}/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{ not valid json',
+    });
+    expect(res.status).toBe(400);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('DELETE /search (unsupported method) returns 405 with CORS headers', async () => {
+    const res = await fetch(`${base}/search`, { method: 'DELETE' });
+    expect(res.status).toBe(405);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('/health does not carry CORS headers (not part of the CORS-enabled surface)', async () => {
+    const res = await fetch(`${base}/health`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
