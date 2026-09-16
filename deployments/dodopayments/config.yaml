@@ -60,6 +60,7 @@ sources:
       - .git
       - .github
       - .cursor
+      - .agent          # Internal agent skills/runbooks, not public documentation
       - node_modules
       - images
       - logo
@@ -84,6 +85,7 @@ sources:
       - README.md
       - LICENSE
       - CONTRIBUTING.md
+      - AGENTS.md       # Internal agent instructions, not public documentation
       - styles.css
 
   # =============================================================================
