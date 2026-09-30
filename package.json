@@ -34,7 +34,7 @@
     "prettier": "^3.4.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "wrangler": "^4.55.0"
+    "wrangler": "^4.144.0"
   },
   "engines": {
     "node": ">=18"
