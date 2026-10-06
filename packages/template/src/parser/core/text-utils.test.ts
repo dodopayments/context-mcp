@@ -81,6 +81,20 @@ describe('removeFrontmatter', () => {
   it('leaves content without frontmatter unchanged', () => {
     expect(removeFrontmatter('# Body')).toBe('# Body');
   });
+
+  it('keeps body content between interior --- rules when there is no frontmatter', () => {
+    const md = `# Title\n\nIntro paragraph.\n\n---\n\nImportant section.\n\n---\n\nFinal words.`;
+    const result = removeFrontmatter(md);
+    expect(result).toContain('Important section.');
+    expect(result).toBe(md);
+  });
+
+  it('strips only the leading frontmatter and keeps a later --- thematic break', () => {
+    const md = `---\ntitle: Hello\n---\n# Body\n\n---\n\nMore body.`;
+    const result = removeFrontmatter(md);
+    expect(result).not.toContain('title: Hello');
+    expect(result.trim()).toBe('# Body\n\n---\n\nMore body.');
+  });
 });
 
 describe('convertCallouts', () => {
