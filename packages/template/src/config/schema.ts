@@ -65,6 +65,11 @@ export const SourceSchema = z
     // Skip specific files by name (case-insensitive matching)
     skipFiles: z.array(z.string()).default([]),
 
+    // MDX sources: skip pages whose frontmatter has `openapi:` (Mintlify endpoint stubs).
+    // Use it to index the hand-written pages of an API reference folder that an
+    // `openapi` source already covers.
+    skipOpenApiPages: z.boolean().default(false),
+
     // For OpenAPI sources: directory with MDX files containing openapi: frontmatter
     // Used to build URL mapping from file paths (e.g., "api-reference")
     // If not set, URLs are generated from operationId pattern

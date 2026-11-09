@@ -102,6 +102,21 @@ sources:
     urlMappingDir: api-reference
 
   # =============================================================================
+  # API REFERENCE GUIDES (hand-written MDX in api-reference/)
+  # =============================================================================
+  # dodo-docs skips api-reference/ and dodo-api covers only the OpenAPI endpoint
+  # pages, so error-codes, introduction, metadata and transaction-failures were
+  # never indexed. This source indexes them and skips the endpoint stubs.
+  - name: dodo-api-guides
+    displayName: 'Dodo Payments API Reference Guides'
+    type: github
+    repository: dodopayments/dodo-docs
+    path: api-reference
+    parser: mdx
+    baseUrl: https://docs.dodopayments.com/api-reference
+    skipOpenApiPages: true
+
+  # =============================================================================
   # BILLINGSDK DOCUMENTATION (Fumadocs MDX)
   # =============================================================================
   - name: billingsdk

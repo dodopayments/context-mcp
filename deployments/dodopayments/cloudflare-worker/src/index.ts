@@ -16,6 +16,7 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
+import { onePerPage } from './one-per-page';
 
 // =============================================================================
 // TYPES
@@ -136,11 +137,12 @@ async function searchDocs(
   const rerankEnabled = env.ENABLE_RERANK !== 'false';
   const rerankFetchCount = parseInt(env.RERANK_FETCH_COUNT, 10) || 30;
 
-  const returnCount = Math.min(Math.max(1, limit ?? defaultTopK), maxTopK);
+  const returnCount = Math.min(Math.max(1, Math.floor(limit ?? defaultTopK)), maxTopK);
   const index = pinecone.index(env.PINECONE_INDEX_NAME);
   const queryEmbedding = await generateQueryEmbedding(env, query);
 
-  const fetchCount = rerankEnabled ? rerankFetchCount : returnCount;
+  // Fetch more chunks than we return, so results stay full after one-per-page.
+  const fetchCount = Math.max(rerankFetchCount, returnCount);
 
   const results = await index.query({
     vector: queryEmbedding,
@@ -161,10 +163,18 @@ async function searchDocs(
     })) || [];
 
   if (searchResults.length > 0 && rerankEnabled) {
-    return rerankWithPinecone(pinecone, query, searchResults, returnCount, env);
+    // Rerank every fetched chunk, then keep one per page.
+    const reranked = await rerankWithPinecone(
+      pinecone,
+      query,
+      searchResults,
+      searchResults.length,
+      env
+    );
+    return onePerPage(reranked, returnCount);
   }
 
-  return searchResults.slice(0, returnCount);
+  return onePerPage(searchResults, returnCount);
 }
 
 function formatResults(results: SearchResult[], query: string): string {
