@@ -566,6 +566,7 @@ export function parseMDXSource(
 
     // Parse frontmatter
     const { data, content: mdxContent } = grayMatter.default(content);
+    if (source.skipOpenApiPages && data.openapi) continue;
     const title = data.title || path.basename(file, path.extname(file));
 
     // Build slug and URL
