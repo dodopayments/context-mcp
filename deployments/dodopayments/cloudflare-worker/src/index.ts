@@ -17,6 +17,7 @@ import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { onePerPage } from './one-per-page';
+import { preferDocs } from './prefer-docs';
 
 // =============================================================================
 // TYPES
@@ -41,6 +42,8 @@ interface Env {
   RERANK_MODEL: string;
   RERANK_FETCH_COUNT: string;
   MAX_RERANK_CHARS: string;
+  // Score multiplier for GitHub README results, so docs pages win close calls. 1 turns it off.
+  GITHUB_SCORE_FACTOR?: string;
 
   // Durable Object binding
   MCP_OBJECT: DurableObjectNamespace;
@@ -136,6 +139,7 @@ async function searchDocs(
   const maxTopK = parseInt(env.MAX_TOP_K, 10) || 20;
   const rerankEnabled = env.ENABLE_RERANK !== 'false';
   const rerankFetchCount = parseInt(env.RERANK_FETCH_COUNT, 10) || 30;
+  const githubFactor = parseFloat(env.GITHUB_SCORE_FACTOR ?? '0.8');
 
   const returnCount = Math.min(Math.max(1, Math.floor(limit ?? defaultTopK)), maxTopK);
   const index = pinecone.index(env.PINECONE_INDEX_NAME);
@@ -171,10 +175,10 @@ async function searchDocs(
       searchResults.length,
       env
     );
-    return onePerPage(reranked, returnCount);
+    return onePerPage(preferDocs(reranked, githubFactor), returnCount);
   }
 
-  return onePerPage(searchResults, returnCount);
+  return onePerPage(preferDocs(searchResults, githubFactor), returnCount);
 }
 
 function formatResults(results: SearchResult[], query: string): string {
