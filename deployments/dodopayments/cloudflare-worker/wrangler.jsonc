@@ -34,7 +34,8 @@
     "ENABLE_RERANK": "true",
     "RERANK_MODEL": "pinecone-rerank-v0",
     "RERANK_FETCH_COUNT": "30",
-    "MAX_RERANK_CHARS": "1200"
+    "MAX_RERANK_CHARS": "1200",
+    "GITHUB_SCORE_FACTOR": "0.8"
   },
 
   // Enable observability
