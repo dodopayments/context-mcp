@@ -18,6 +18,8 @@ function pageKey(result: PageRef): string {
  * 2026-11 search eval).
  */
 export function onePerPage<T extends PageRef>(results: T[], count: number): T[] {
+  // `limit` can arrive as a fraction from MCP or POST /search.
+  const max = Math.max(1, Math.floor(count));
   const seen = new Set<string>();
   const unique: T[] = [];
   for (const result of results) {
@@ -25,7 +27,7 @@ export function onePerPage<T extends PageRef>(results: T[], count: number): T[] 
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(result);
-    if (unique.length === count) break;
+    if (unique.length >= max) break;
   }
   return unique;
 }

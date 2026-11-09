@@ -137,7 +137,7 @@ async function searchDocs(
   const rerankEnabled = env.ENABLE_RERANK !== 'false';
   const rerankFetchCount = parseInt(env.RERANK_FETCH_COUNT, 10) || 30;
 
-  const returnCount = Math.min(Math.max(1, limit ?? defaultTopK), maxTopK);
+  const returnCount = Math.min(Math.max(1, Math.floor(limit ?? defaultTopK)), maxTopK);
   const index = pinecone.index(env.PINECONE_INDEX_NAME);
   const queryEmbedding = await generateQueryEmbedding(env, query);
 
