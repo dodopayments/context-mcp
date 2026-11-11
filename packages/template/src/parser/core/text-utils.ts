@@ -101,7 +101,10 @@ export function removeImportsExports(content: string): string {
  * Remove frontmatter from markdown content
  */
 export function removeFrontmatter(content: string): string {
-  return content.replace(/^---[\s\S]*?---\n*/m, '');
+  // No 'm' flag: frontmatter is only the leading block, so anchor at the string
+  // start. With 'm', '^' matches any line start and interior '---' thematic
+  // breaks get treated as frontmatter, silently dropping real body content.
+  return content.replace(/^---[\s\S]*?---\n*/, '');
 }
 
 /**
