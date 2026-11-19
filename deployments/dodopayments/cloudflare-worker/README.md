@@ -7,7 +7,7 @@ A remote MCP (Model Context Protocol) server deployed on Cloudflare Workers with
 - **MCP Server**: Streamable HTTP transport for AI assistants (Cursor, Windsurf, Claude Desktop)
 - **Semantic Search**: Vector search across API Reference, SDK docs, BillingSDK, and guides
 - **REST API**: Direct search endpoint for non-MCP integrations
-- **Durable Objects**: State management via Cloudflare's agents framework
+- **Stateless**: Each MCP request is handled independently (no Durable Objects)
 
 ## Prerequisites
 

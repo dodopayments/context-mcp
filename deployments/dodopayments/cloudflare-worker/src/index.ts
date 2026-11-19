@@ -11,7 +11,7 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpAgent } from 'agents/mcp';
+import { createMcpHandler } from 'agents/mcp';
 import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
@@ -44,9 +44,6 @@ interface Env {
   MAX_RERANK_CHARS: string;
   // Score multiplier for GitHub README results, so docs pages win close calls. 1 turns it off.
   GITHUB_SCORE_FACTOR?: string;
-
-  // Durable Object binding
-  MCP_OBJECT: DurableObjectNamespace;
 }
 
 interface SearchResult {
@@ -209,65 +206,62 @@ function formatResults(results: SearchResult[], query: string): string {
 // MCP SERVER
 // =============================================================================
 
-export class DodoKnowledgeMCP extends McpAgent<Env> {
-  server = new McpServer({
+// Stateless: a fresh server per request, no Durable Object or session storage.
+// The only tool is a pure search, so there is no per-session state to keep.
+function createServer(env: Env): McpServer {
+  const server = new McpServer({
     name: 'dodo-knowledge-mcp',
     version: '1.0.0',
   });
 
-  async init() {
-    const env = this.env;
-    const defaultTopK = parseInt(env.DEFAULT_TOP_K || '10', 10);
-
-    // Initialize clients
-    const pinecone = new Pinecone({ apiKey: env.PINECONE_API_KEY });
-
-    // Register the search_docs tool
-    this.server.registerTool(
-      'search_docs',
-      {
-        title: 'Search Dodo Payments Documentation',
-        description:
-          'Search the Dodo Payments documentation using semantic search across API Reference, SDK docs, BillingSDK, and guides.',
-        inputSchema: {
-          query: z
-            .string()
-            .describe(
-              'Search query - describe what you want to find in the documentation. Be specific and mention the framework/language or any other relevant information in query for precise retrieval'
-            ),
-          limit: z
-            .number()
-            .min(1)
-            .max(parseInt(env.MAX_TOP_K, 10) || 20)
-            .optional()
-            .describe(
-              `Number of results to return (default: ${env.DEFAULT_TOP_K || '10'}, max: ${env.MAX_TOP_K || '20'})`
-            ),
-        },
+  server.registerTool(
+    'search_docs',
+    {
+      title: 'Search Dodo Payments Documentation',
+      description:
+        'Search the Dodo Payments documentation using semantic search across API Reference, SDK docs, BillingSDK, and guides.',
+      inputSchema: {
+        query: z
+          .string()
+          .describe(
+            'Search query - describe what you want to find in the documentation. Be specific and mention the framework/language or any other relevant information in query for precise retrieval'
+          ),
+        limit: z
+          .number()
+          .min(1)
+          .max(parseInt(env.MAX_TOP_K, 10) || 20)
+          .optional()
+          .describe(
+            `Number of results to return (default: ${env.DEFAULT_TOP_K || '10'}, max: ${env.MAX_TOP_K || '20'})`
+          ),
       },
-      async ({ query, limit }) => {
-        try {
-          const results = await searchDocs(pinecone, env, query, limit);
-          const formatted = formatResults(results, query);
+    },
+    async ({ query, limit }) => {
+      try {
+        // Built per call, not per request: initialize and tools/list never need it.
+        const pinecone = new Pinecone({ apiKey: env.PINECONE_API_KEY });
+        const results = await searchDocs(pinecone, env, query, limit);
+        const formatted = formatResults(results, query);
 
-          return {
-            content: [{ type: 'text', text: formatted }],
-          };
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Error searching documentation: ${message}`,
-              },
-            ],
-            isError: true,
-          };
-        }
+        return {
+          content: [{ type: 'text', text: formatted }],
+        };
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error searching documentation: ${message}`,
+            },
+          ],
+          isError: true,
+        };
       }
-    );
-  }
+    }
+  );
+
+  return server;
 }
 
 // =============================================================================
@@ -380,7 +374,7 @@ export default {
 
     // MCP endpoint (Streamable HTTP)
     if (url.pathname === '/mcp') {
-      return DodoKnowledgeMCP.serve('/mcp').fetch(request, env, ctx);
+      return createMcpHandler(createServer(env), { route: '/mcp' })(request, env, ctx);
     }
 
     // Health check endpoint
