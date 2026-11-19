@@ -5,21 +5,18 @@
   "compatibility_date": "2024-12-01",
   "compatibility_flags": ["nodejs_compat"],
 
-  // Durable Objects for MCP state management
+  // MCP is served statelessly (createMcpHandler). v2 deletes the old
+  // per-session Durable Object class, which only held MCP session state.
   "migrations": [
     {
       "new_sqlite_classes": ["DodoKnowledgeMCP"],
       "tag": "v1"
+    },
+    {
+      "deleted_classes": ["DodoKnowledgeMCP"],
+      "tag": "v2"
     }
   ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "class_name": "DodoKnowledgeMCP",
-        "name": "MCP_OBJECT"
-      }
-    ]
-  },
 
   // Environment variables (non-sensitive)
   "vars": {
