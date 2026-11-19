@@ -35,9 +35,11 @@
     "GITHUB_SCORE_FACTOR": "0.8"
   },
 
-  // Enable observability
+  // Enable observability. Sample 1% of invocations: this worker serves tens of
+  // millions of requests a month, and Workers Logs bills per event.
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 0.01
   }
 }
 
