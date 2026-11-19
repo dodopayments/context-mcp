@@ -374,6 +374,11 @@ export default {
 
     // MCP endpoint (Streamable HTTP)
     if (url.pathname === '/mcp') {
+      // No server-initiated messages, so no standalone SSE stream. The spec allows
+      // 405 here, and clients then stop reopening a stream that never carries data.
+      if (request.method === 'GET') {
+        return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'POST' } });
+      }
       return createMcpHandler(createServer(env), { route: '/mcp' })(request, env, ctx);
     }
 
