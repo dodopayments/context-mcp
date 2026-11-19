@@ -134,5 +134,6 @@ describe('/mcp (stateless)', () => {
     );
     expect(res.status).toBe(405);
     expect(res.headers.get('Allow')).toBe('POST');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
   });
 });
