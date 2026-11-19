@@ -374,6 +374,22 @@ export default {
 
     // MCP endpoint (Streamable HTTP)
     if (url.pathname === '/mcp') {
+      // No server-initiated messages, so no standalone SSE stream. The spec allows
+      // 405 here, and clients then stop reopening a stream that never carries data.
+      if (request.method === 'GET') {
+        // Same CORS headers createMcpHandler sends, so a browser client can read the 405.
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: {
+            Allow: 'POST',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers':
+              'Content-Type, Accept, mcp-session-id, mcp-protocol-version',
+            'Access-Control-Expose-Headers': 'mcp-session-id',
+          },
+        });
+      }
       return createMcpHandler(createServer(env), { route: '/mcp' })(request, env, ctx);
     }
 

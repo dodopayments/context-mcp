@@ -125,4 +125,15 @@ describe('/mcp (stateless)', () => {
     expect(pineconeCtor).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledTimes(1);
   });
+
+  it('rejects GET with 405 instead of opening an SSE stream', async () => {
+    const res = await worker.fetch(
+      new Request('https://mcp.test/mcp', { headers: { Accept: 'text/event-stream' } }),
+      env,
+      ctx
+    );
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('POST');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
 });
